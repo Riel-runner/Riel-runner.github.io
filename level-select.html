@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riel Runner — Select Campaign</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: #0a0e1a;
+    font-family: 'Press Start 2P', monospace;
+    color: #e8e8d0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+
+  /* Pixel grid bg */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(245,196,0,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245,196,0,0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* CRT scanlines */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.12) 2px, rgba(0,0,0,0.12) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .page {
+    position: relative;
+    z-index: 5;
+    width: 100%;
+    max-width: 780px;
+    padding: 36px 24px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* Header */
+  .back-btn {
+    align-self: flex-start;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: #888870;
+    text-decoration: none;
+    letter-spacing: 0.1em;
+    margin-bottom: 28px;
+    transition: color 0.1s;
+  }
+  .back-btn:hover { color: #f5c400; }
+
+  .page-title {
+    font-size: clamp(12px, 3vw, 18px);
+    color: #f5c400;
+    letter-spacing: 0.15em;
+    text-shadow: 3px 3px #b8920a, 5px 5px #3d2b1f;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+
+  .page-sub {
+    font-size: 7px;
+    color: #555566;
+    letter-spacing: 0.2em;
+    margin-bottom: 36px;
+    text-align: center;
+  }
+
+  /* Pixel divider */
+  .divider {
+    width: 100%;
+    height: 3px;
+    background: repeating-linear-gradient(
+      90deg, #f5c400 0px, #f5c400 8px,
+      transparent 8px, transparent 16px
+    );
+    opacity: 0.25;
+    margin-bottom: 32px;
+  }
+
+  /* Campaign slots grid */
+  .slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    width: 100%;
+    margin-bottom: 28px;
+  }
+
+  /* Individual slot card */
+  .slot-card {
+    background: #0f1526;
+    border: 3px solid #1e2440;
+    padding: 20px 16px;
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.1s, transform 0.08s;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .slot-card:hover {
+    border-color: #f5c400;
+    transform: translateY(-2px);
+  }
+
+  .slot-card:active { transform: translateY(1px); }
+
+  .slot-card.empty {
+    border-style: dashed;
+    border-color: #2a2e44;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .slot-card.empty:hover { border-color: #f5c400; }
+
+  .slot-number {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 7px;
+    color: #2a2e44;
+    letter-spacing: 0.1em;
+  }
+
+  .slot-name {
+    font-size: clamp(8px, 2vw, 10px);
+    color: #e8e8d0;
+    letter-spacing: 0.08em;
+    margin-bottom: 14px;
+    word-break: break-all;
+    line-height: 1.6;
+  }
+
+  .slot-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .slot-stat {
+    font-size: 7px;
+    color: #555566;
+    letter-spacing: 0.1em;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .slot-stat span { color: #f5c400; }
+
+  .slot-progress-bar {
+    width: 100%;
+    height: 5px;
+    background: #1e2440;
+    margin-top: 10px;
+    position: relative;
+  }
+
+  .slot-progress-fill {
+    height: 100%;
+    background: #f5c400;
+    transition: width 0.3s;
+  }
+
+  .slot-progress-label {
+    font-size: 6px;
+    color: #888870;
+    margin-top: 4px;
+    letter-spacing: 0.1em;
+  }
+
+  /* Empty slot */
+  .empty-icon {
+    font-size: 24px;
+    color: #2a2e44;
+    display: block;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+
+  .empty-label {
+    font-size: 8px;
+    color: #2a2e44;
+    letter-spacing: 0.1em;
+  }
+
+  .slot-card.empty:hover .empty-label,
+  .slot-card.empty:hover .empty-icon { color: #f5c400; }
+
+  /* Delete button on slot */
+  .slot-delete {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    font-size: 6px;
+    color: #c0392b;
+    background: none;
+    border: 1px solid #c0392b;
+    font-family: 'Press Start 2P', monospace;
+    padding: 3px 5px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  .slot-card:hover .slot-delete { opacity: 1; }
+  .slot-delete:hover { background: #c0392b; color: #fff; }
+
+  /* New campaign modal */
+  .modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,14,26,0.9);
+    z-index: 50;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-backdrop.active { display: flex; }
+
+  .modal {
+    background: #0f1526;
+    border: 3px solid #f5c400;
+    padding: 32px 28px;
+    width: 90%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    box-shadow: 6px 6px #b8920a, 10px 10px #3d2b1f;
+    position: relative;
+    z-index: 51;
+  }
+
+  .modal-title {
+    font-size: 11px;
+    color: #f5c400;
+    letter-spacing: 0.15em;
+    text-align: center;
+  }
+
+  .modal-label {
+    font-size: 7px;
+    color: #888870;
+    letter-spacing: 0.15em;
+    margin-bottom: 8px;
+  }
+
+  .modal-input {
+    width: 100%;
+    background: #0a0e1a;
+    border: 2px solid #2a2e44;
+    color: #e8e8d0;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 12px 10px;
+    letter-spacing: 0.1em;
+    outline: none;
+    transition: border-color 0.1s;
+  }
+
+  .modal-input:focus { border-color: #f5c400; }
+
+  .modal-input::placeholder { color: #333344; }
+
+  .modal-char-count {
+    font-size: 6px;
+    color: #333344;
+    text-align: right;
+    margin-top: 4px;
+    letter-spacing: 0.1em;
+  }
+
+  .modal-btns {
+    display: flex;
+    gap: 12px;
+  }
+
+  .modal-btn {
+    flex: 1;
+    padding: 12px 0;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border: none;
+    text-align: center;
+  }
+
+  .modal-btn-confirm {
+    background: #f5c400;
+    color: #0a0e1a;
+    box-shadow: 0 4px #b8920a;
+  }
+
+  .modal-btn-confirm:hover { background: #ffe033; }
+  .modal-btn-confirm:active { transform: translateY(3px); box-shadow: 0 1px #b8920a; }
+
+  .modal-btn-cancel {
+    background: transparent;
+    color: #888870;
+    border: 2px solid #2a2e44;
+  }
+
+  .modal-btn-cancel:hover { border-color: #888870; color: #e8e8d0; }
+
+  /* Delete confirm modal */
+  .delete-modal-text {
+    font-size: 8px;
+    color: #e8e8d0;
+    letter-spacing: 0.08em;
+    line-height: 2;
+    text-align: center;
+  }
+
+  .delete-modal-name {
+    color: #f5c400;
+  }
+
+  .modal-btn-delete {
+    background: #c0392b;
+    color: #fff;
+    box-shadow: 0 4px #8e1a10;
+  }
+
+  .modal-btn-delete:hover { background: #e74c3c; }
+  .modal-btn-delete:active { transform: translateY(3px); box-shadow: 0 1px #8e1a10; }
+
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: #1e2440;
+    border: 2px solid #f5c400;
+    color: #f5c400;
+    font-size: 8px;
+    padding: 10px 18px;
+    letter-spacing: 0.1em;
+    z-index: 200;
+    transition: transform 0.25s;
+    white-space: nowrap;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .version {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    font-size: 6px;
+    color: #222233;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <a class="back-btn" href="index.html">&#9664; BACK</a>
+
+  <div class="page-title">SELECT CAMPAIGN</div>
+  <div class="page-sub">CHOOSE A SAVE SLOT OR START A NEW CAMPAIGN</div>
+  <div class="divider"></div>
+
+  <div class="slots-grid" id="slots-grid">
+    <!-- Filled by JS -->
+  </div>
+</div>
+
+<!-- New Campaign Modal -->
+<div class="modal-backdrop" id="new-modal">
+  <div class="modal">
+    <div class="modal-title">NEW CAMPAIGN</div>
+    <div>
+      <div class="modal-label">CAMPAIGN NAME</div>
+      <input
+        class="modal-input"
+        id="campaign-name-input"
+        type="text"
+        maxlength="16"
+        placeholder="ENTER NAME..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <div class="modal-char-count"><span id="char-count">0</span> / 16</div>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-cancel" id="new-cancel">CANCEL</button>
+      <button class="modal-btn modal-btn-confirm" id="new-confirm">START &#9658;</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-backdrop" id="delete-modal">
+  <div class="modal">
+    <div class="modal-title" style="color:#c0392b;">DELETE CAMPAIGN?</div>
+    <div class="delete-modal-text">
+      THIS WILL PERMANENTLY DELETE<br><br>
+      <span class="delete-modal-name" id="delete-name-display"></span><br><br>
+      ALL PROGRESS WILL BE LOST.
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-cancel" id="delete-cancel">CANCEL</button>
+      <button class="modal-btn modal-btn-delete" id="delete-confirm">DELETE</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="version">v0.1.0 RIEL RUNNER</div>
+
+<script>
+const MAX_SLOTS = 6;
+const STORAGE_KEY = 'rielrunner_campaigns';
+
+// ─── DATA ────────────────────────────────────────────────────────────
+function getCampaigns() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch { return []; }
+}
+
+function saveCampaigns(arr) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+}
+
+function getDefaultCampaignState(name) {
+  return {
+    id: Date.now(),
+    name: name.toUpperCase(),
+    level: 1,
+    riels: 0,
+    hp: 150,
+    maxHp: 150,
+    lives: 3,
+    gunDamage: 2,
+    upgradeCount: 0,
+    upgradeCost: 4,
+    npcCount: 5,
+    bossesBeaten: 0,
+    createdAt: Date.now(),
+    lastPlayed: Date.now()
+  };
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────
+function renderSlots() {
+  const campaigns = getCampaigns();
+  const grid = document.getElementById('slots-grid');
+  grid.innerHTML = '';
+
+  // Existing campaign slots
+  campaigns.forEach((c, i) => {
+    const progress = Math.round((c.level - 1) / 100 * 100);
+    const card = document.createElement('div');
+    card.className = 'slot-card';
+    card.innerHTML = `
+      <div class="slot-number">SLOT ${i+1}</div>
+      <div>
+        <div class="slot-name">${escHtml(c.name)}</div>
+        <div class="slot-stats">
+          <div class="slot-stat">LEVEL <span>${c.level} / 100</span></div>
+          <div class="slot-stat">RIELS <span>${c.riels} KHR</span></div>
+          <div class="slot-stat">GUN DMG <span>${c.gunDamage}</span></div>
+          <div class="slot-stat">LIVES <span>${'&#9829; '.repeat(c.lives).trim()}</span></div>
+        </div>
+        <div class="slot-progress-bar">
+          <div class="slot-progress-fill" style="width:${progress}%"></div>
+        </div>
+        <div class="slot-progress-label">${progress}% COMPLETE</div>
+      </div>
+      <button class="slot-delete" data-idx="${i}">&#10006; DELETE</button>
+    `;
+    card.addEventListener('click', (e) => {
+      if(e.target.closest('.slot-delete')) return;
+      loadCampaign(i);
+    });
+    card.querySelector('.slot-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openDeleteModal(i);
+    });
+    grid.appendChild(card);
+  });
+
+  // Empty slot (add new) — only if under max
+  if(campaigns.length < MAX_SLOTS) {
+    const empty = document.createElement('div');
+    empty.className = 'slot-card empty';
+    empty.innerHTML = `
+      <span class="empty-icon">&#43;</span>
+      <span class="empty-label">NEW CAMPAIGN</span>
+    `;
+    empty.addEventListener('click', openNewModal);
+    grid.appendChild(empty);
+  }
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── LOAD CAMPAIGN ───────────────────────────────────────────────────
+function loadCampaign(idx) {
+  const campaigns = getCampaigns();
+  const c = campaigns[idx];
+  if(!c) return;
+
+  // Update last played
+  c.lastPlayed = Date.now();
+  campaigns[idx] = c;
+  saveCampaigns(campaigns);
+
+  // Write active campaign to localStorage for game.html to read
+  localStorage.setItem('activeCampaignIdx', idx);
+  localStorage.setItem('activeCampaign', JSON.stringify(c));
+
+  window.location.href = 'game.html';
+}
+
+// ─── NEW CAMPAIGN MODAL ───────────────────────────────────────────────
+const newModal = document.getElementById('new-modal');
+const nameInput = document.getElementById('campaign-name-input');
+const charCount = document.getElementById('char-count');
+
+function openNewModal() {
+  nameInput.value = '';
+  charCount.textContent = '0';
+  newModal.classList.add('active');
+  setTimeout(() => nameInput.focus(), 50);
+}
+
+function closeNewModal() {
+  newModal.classList.remove('active');
+}
+
+nameInput.addEventListener('input', () => {
+  charCount.textContent = nameInput.value.length;
+});
+
+nameInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter') confirmNew();
+  if(e.key === 'Escape') closeNewModal();
+});
+
+document.getElementById('new-cancel').addEventListener('click', closeNewModal);
+
+document.getElementById('new-confirm').addEventListener('click', confirmNew);
+
+function confirmNew() {
+  const name = nameInput.value.trim();
+  if(!name) {
+    showToast('PLEASE ENTER A NAME!');
+    nameInput.focus();
+    return;
+  }
+
+  const campaigns = getCampaigns();
+  if(campaigns.length >= MAX_SLOTS) {
+    showToast('MAX 6 CAMPAIGNS!');
+    closeNewModal();
+    return;
+  }
+
+  const newCampaign = getDefaultCampaignState(name);
+  campaigns.push(newCampaign);
+  saveCampaigns(campaigns);
+  closeNewModal();
+
+  const idx = campaigns.length - 1;
+  localStorage.setItem('activeCampaignIdx', idx);
+  localStorage.setItem('activeCampaign', JSON.stringify(newCampaign));
+  window.location.href = 'game.html';
+}
+
+// ─── DELETE MODAL ────────────────────────────────────────────────────
+const deleteModal = document.getElementById('delete-modal');
+let pendingDeleteIdx = null;
+
+function openDeleteModal(idx) {
+  const campaigns = getCampaigns();
+  pendingDeleteIdx = idx;
+  document.getElementById('delete-name-display').textContent = campaigns[idx].name;
+  deleteModal.classList.add('active');
+}
+
+function closeDeleteModal() {
+  deleteModal.classList.remove('active');
+  pendingDeleteIdx = null;
+}
+
+document.getElementById('delete-cancel').addEventListener('click', closeDeleteModal);
+
+document.getElementById('delete-confirm').addEventListener('click', () => {
+  if(pendingDeleteIdx === null) return;
+  const campaigns = getCampaigns();
+  const name = campaigns[pendingDeleteIdx].name;
+  campaigns.splice(pendingDeleteIdx, 1);
+  saveCampaigns(campaigns);
+  closeDeleteModal();
+  renderSlots();
+  showToast(name + ' DELETED');
+});
+
+// Close modals on backdrop click
+[newModal, deleteModal].forEach(m => {
+  m.addEventListener('click', (e) => {
+    if(e.target === m) {
+      m.classList.remove('active');
+      pendingDeleteIdx = null;
+    }
+  });
+});
+
+// ─── TOAST ───────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────
+renderSlots();
+</script>
+</body>
+</html>

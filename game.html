@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riel Runner</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0e1a;
+    font-family: 'Press Start 2P', monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #game-canvas {
+    display: block;
+    image-rendering: pixelated;
+    cursor: crosshair;
+  }
+
+  /* CRT overlay */
+  #crt {
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.10) 2px, rgba(0,0,0,0.10) 4px
+    );
+    pointer-events: none;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+<div id="crt"></div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+//  CANVAS SETUP
+// ═══════════════════════════════════════════════════════════════
+const canvas = document.getElementById('game-canvas');
+const ctx    = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const BASE_W = 800;
+const BASE_H = 450;
+
+function resizeCanvas() {
+  const scaleX = window.innerWidth  / BASE_W;
+  const scaleY = window.innerHeight / BASE_H;
+  const scale  = Math.min(scaleX, scaleY);
+  canvas.width  = BASE_W;
+  canvas.height = BASE_H;
+  canvas.style.width  = (BASE_W * scale) + 'px';
+  canvas.style.height = (BASE_H * scale) + 'px';
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ═══════════════════════════════════════════════════════════════
+//  LOAD CAMPAIGN + SETTINGS
+// ═══════════════════════════════════════════════════════════════
+let campaign;
+try { campaign = JSON.parse(localStorage.getItem('activeCampaign')); } catch {}
+if (!campaign) {
+  campaign = {
+    level: 1, riels: 0, hp: 150, maxHp: 150,
+    lives: 3, gunDamage: 2, upgradeCount: 0,
+    upgradeCost: 4, npcCount: 5, bossesBeaten: 0, name: 'DEBUG'
+  };
+}
+
+let settings;
+try { settings = JSON.parse(localStorage.getItem('rielrunner_settings')); } catch {}
+if (!settings) settings = { autoAim: true, hpBars: true, damageNumbers: true };
+
+// ═══════════════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const GRAVITY        = 0.55;
+const JUMP_FORCE     = -12;
+const MOVE_SPEED     = 3.5;
+const GROUND_Y       = BASE_H - 60;   // y where ground surface is
+const FLOOR_H        = 60;
+const LEVEL_WIDTH    = 4000;          // total corridor width in px
+const NPC_DETECT_R   = 275;          // px — when NPC starts walking
+const CONTACT_DAMAGE = 0.5;          // hp per frame while touching NPC
+const LASER_TICK_PC  = 0.10;         // 10% max hp per 0.5s from lasers (chunk 5)
+const LASER_TICK_INT = 30;           // frames between laser ticks
+const SHOOT_COOLDOWN = 18;           // frames (~0.3s at 60fps)
+const BULLET_SPEED   = 10;
+const PIXEL          = 3;            // sprite pixel scale
+
+// ═══════════════════════════════════════════════════════════════
+//  WORLD / CAMERA
+// ═══════════════════════════════════════════════════════════════
+let camX = 0;   // camera left edge in world coords
+
+// ═══════════════════════════════════════════════════════════════
+//  PLAYER
+// ═══════════════════════════════════════════════════════════════
+const PLAYER_W = 18;
+const PLAYER_H = 28;
+
+const player = {
+  x: 80,           // world x
+  y: GROUND_Y - PLAYER_H,
+  vx: 0,
+  vy: 0,
+  onGround: false,
+  hp: campaign.hp,
+  maxHp: campaign.maxHp,
+  lives: campaign.lives,
+  gunDamage: campaign.gunDamage,
+  // Limited bullets per level (set on spawn)
+  bullets: 20,
+  shootTimer: 0,
+  gunFlash: 0,
+  animFrame: 0,
+  animTick: 0,
+  facingRight: true,
+  // death / respawn
+  dead: false,
+  deathX: 80,
+  respawnTimer: 0,
+  // damage flash
+  hitFlash: 0,
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  INPUT
+// ═══════════════════════════════════════════════════════════════
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space') e.preventDefault();
+  if (e.code === 'ArrowUp') e.preventDefault();
+});
+window.addEventListener('keyup',  e => { keys[e.code] = false; });
+
+let mouseX = 0, mouseY = 0;
+canvas.addEventListener('mousemove', e => {
+  const rect  = canvas.getBoundingClientRect();
+  const scaleX = BASE_W / rect.width;
+  const scaleY = BASE_H / rect.height;
+  mouseX = (e.clientX - rect.left) * scaleX;
+  mouseY = (e.clientY - rect.top)  * scaleY;
+});
+
+let mouseDown = false;
+canvas.addEventListener('mousedown', e => { if (e.button === 0) mouseDown = true; });
+canvas.addEventListener('mouseup',   e => { if (e.button === 0) mouseDown = false; });
+
+// ═══════════════════════════════════════════════════════════════
+//  PLATFORMS  (chunk 5 will add obstacles / lasers)
+// ═══════════════════════════════════════════════════════════════
+// Simple platforms distributed across the level
+const platforms = generatePlatforms();
+
+function generatePlatforms() {
+  const plats = [];
+  const spacing = 320;
+  for (let i = 1; i * spacing < LEVEL_WIDTH - 400; i++) {
+    const x = i * spacing + Math.random() * 80 - 40;
+    const y = GROUND_Y - 70 - Math.random() * 60;
+    const w = 80 + Math.random() * 60;
+    plats.push({ x, y, w, h: 14 });
+  }
+  return plats;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PLAYER PHYSICS + MOVEMENT
+// ═══════════════════════════════════════════════════════════════
+function updatePlayer() {
+  if (player.dead) {
+    player.respawnTimer--;
+    if (player.respawnTimer <= 0) respawnPlayer();
+    return;
+  }
+
+  // Horizontal
+  let moving = false;
+  if (keys['ArrowLeft']) {
+    player.vx = -MOVE_SPEED;
+    player.facingRight = false;
+    moving = true;
+  } else if (keys['ArrowRight']) {
+    player.vx = MOVE_SPEED;
+    player.facingRight = true;
+    moving = true;
+  } else {
+    player.vx = 0;
+  }
+
+  // Jump — ArrowUp only, Space is shoot
+  if (keys['ArrowUp'] && player.onGround) {
+    player.vy = JUMP_FORCE;
+    player.onGround = false;
+  }
+
+  // Gravity
+  player.vy += GRAVITY;
+  player.x  += player.vx;
+  player.y  += player.vy;
+
+  // World bounds (can't go left of start, can't go past end)
+  if (player.x < 0) player.x = 0;
+  if (player.x + PLAYER_W > LEVEL_WIDTH) player.x = LEVEL_WIDTH - PLAYER_W;
+
+  // Ground collision
+  player.onGround = false;
+  if (player.y + PLAYER_H >= GROUND_Y) {
+    player.y = GROUND_Y - PLAYER_H;
+    player.vy = 0;
+    player.onGround = true;
+  }
+
+  // Platform collision (top only)
+  for (const p of platforms) {
+    if (
+      player.vx >= 0 || true // check all platforms
+    ) {
+      const prevBottom = player.y + PLAYER_H - player.vy;
+      const curBottom  = player.y + PLAYER_H;
+      const inX = player.x + PLAYER_W > p.x && player.x < p.x + p.w;
+      const crossTop = prevBottom <= p.y && curBottom >= p.y;
+      if (inX && crossTop && player.vy >= 0) {
+        player.y = p.y - PLAYER_H;
+        player.vy = 0;
+        player.onGround = true;
+      }
+    }
+  }
+
+  // Animate legs
+  if (moving && player.onGround) {
+    player.animTick++;
+    if (player.animTick >= 8) { player.animTick = 0; player.animFrame = (player.animFrame + 1) % 3; }
+  } else if (!moving) {
+    player.animFrame = 0;
+  }
+
+  // Timers
+  if (player.shootTimer > 0) player.shootTimer--;
+  if (player.gunFlash   > 0) player.gunFlash--;
+  if (player.hitFlash   > 0) player.hitFlash--;
+
+  // Shooting
+  const wantShoot = keys['Space'] || mouseDown;
+  if (wantShoot && player.shootTimer <= 0) {
+    firePlayerBullet();
+    player.shootTimer = SHOOT_COOLDOWN;
+  }
+
+  // Camera: keep player centred-ish
+  camX = player.x - BASE_W * 0.35;
+  camX = Math.max(0, Math.min(LEVEL_WIDTH - BASE_W, camX));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BULLETS
+// ═══════════════════════════════════════════════════════════════
+const bullets = [];
+// Magazines (spawned on boss levels) — give player +5 bullets when picked up
+const magazines = [];
+
+function firePlayerBullet() {
+  // Don't allow firing if out of bullets
+  if (!player.bullets || player.bullets <= 0) {
+    showToast('OUT OF BULLETS!');
+    // If already at 0, trigger life loss
+    if ((player.bullets || 0) <= 0) {
+      killPlayer();
+    }
+    return;
+  }
+
+  // Consume one bullet
+  player.bullets = Math.max(0, player.bullets - 1);
+
+  const startX = player.facingRight
+    ? player.x + PLAYER_W + 2
+    : player.x - 6;
+  const startY = player.y + 10;
+
+  let dx = 1, dy = 0;
+
+  if (settings.autoAim) {
+    // Find closest NPC
+    let closest = null, bestDist = Infinity;
+    for (const n of npcs) {
+      if (n.dead) continue;
+      const d = Math.hypot(n.x - player.x, n.y - player.y);
+      if (d < bestDist) { bestDist = d; closest = n; }
+    }
+    if (closest) {
+      const tx = closest.x + 10 - startX;
+      const ty = closest.y + 12 - startY;
+      const len = Math.hypot(tx, ty) || 1;
+      dx = tx / len; dy = ty / len;
+    } else {
+      dx = player.facingRight ? 1 : -1;
+    }
+  } else {
+    // Mouse aim — convert mouse to world coords
+    const worldMouseX = mouseX + camX;
+    const worldMouseY = mouseY;
+    const tx = worldMouseX - startX;
+    const ty = worldMouseY - startY;
+    const len = Math.hypot(tx, ty) || 1;
+    dx = tx / len; dy = ty / len;
+  }
+
+  bullets.push({ x: startX, y: startY, dx, dy, alive: true });
+  player.gunFlash = 5;
+
+  // Gunshot sound
+  playGunshot();
+
+  // If bullets just hit 0, trigger a life loss
+  if (player.bullets <= 0) {
+    showToast('OUT OF BULLETS!');
+    killPlayer();
+  }
+}
+
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+
+    const prevX = b.x;
+    const prevY = b.y;
+    const stepX = b.dx * BULLET_SPEED;
+    const stepY = b.dy * BULLET_SPEED;
+    const steps = Math.max(1, Math.ceil(Math.hypot(stepX, stepY) / PIXEL));
+
+    let removed = false;
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const nx = prevX + stepX * t;
+      const ny = prevY + stepY * t;
+
+      // Check platform collision (solid blocks)
+      let hitPlatform = false;
+      for (const p of platforms) {
+        if (nx > p.x && nx < p.x + p.w && ny > p.y && ny < p.y + p.h) {
+          hitPlatform = true;
+          break;
+        }
+      }
+
+      if (hitPlatform) {
+        // spawn small impact effect
+        rielParticles.push({ x: nx, y: ny, vx: (Math.random()-0.5)*1.5, vy: -Math.random()*1.5, life: 18 });
+        bullets.splice(i, 1);
+        removed = true;
+        break;
+      }
+
+      // Advance bullet
+      b.x = nx;
+      b.y = ny;
+    }
+
+    if (removed) continue;
+
+    // Remove bullets as soon as they leave the viewport (prevent camping)
+    const leftBound = camX - 10;
+    const rightBound = camX + BASE_W + 10;
+    if (b.x < leftBound || b.x > rightBound || b.y < 0 || b.y > BASE_H || !b.alive) {
+      bullets.splice(i, 1);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  NPC STATS (scale with level)
+// ═══════════════════════════════════════════════════════════════
+const LVL         = campaign.level || 1;
+// NPC scaling per request:
+// HP: +1 per level (cleaner). Level 1 => 10 HP, Level 99 => ~108 HP
+const NPC_HP      = 10 + Math.max(0, LVL - 1) * 1;
+// Damage: +0.5 per level. Level 1 => 0.5 dmg, Level 99 => ~49.5 dmg
+const NPC_DMG_CONTACT = 0.5 * LVL; // per-frame contact damage (scales with level)
+// Slightly slower NPCs for more player reaction time
+const NPC_SPEED   = MOVE_SPEED * 1.1; // NPCs 10% faster than player
+// Attack cooldowns (frames; assuming ~60fps)
+const NPC_ATTACK_COOLDOWN_FRAMES = Math.round(0.2 * 60); // ~12 frames (0.2s)
+const BOSS_ATTACK_COOLDOWN_FRAMES = Math.round(0.1 * 60); // ~6 frames (0.1s)
+// Cap NPC count to avoid extreme overcrowding at very late levels
+const NPC_COUNT   = Math.min(Math.max(5, campaign.npcCount), 23);
+// Boss scaling constants
+const BOSS_BASE_HP = 200;
+const BOSS_HP_PER  = 75;
+const BOSS_BASE_DMG = 5;
+const BOSS_DMG_PER  = 8;
+
+// ═══════════════════════════════════════════════════════════════
+//  NPC ARRAY + SPAWN
+// ═══════════════════════════════════════════════════════════════
+const npcs = [];
+const NPC_W = 18, NPC_H = 24;
+
+function spawnNPCs() {
+  npcs.length = 0;
+  magazines.length = 0; // clear any previous magazines
+
+  // If this is a boss level (10,20,...,100), spawn a single boss and magazines
+  if (campaign.level > 0 && campaign.level % 10 === 0) {
+    const bossIndex = Math.floor(campaign.level / 10);
+    const bossHp = BOSS_BASE_HP + (bossIndex - 1) * BOSS_HP_PER;
+    const bossDmg = BOSS_BASE_DMG + (bossIndex - 1) * BOSS_DMG_PER;
+    const wx = LEVEL_WIDTH - 400 + (Math.random() * 80 - 40);
+    npcs.push(makeNPC(wx, true, bossHp, bossDmg));
+
+    // Spawn magazines around level — try to place on platforms first
+    const magCount = 6;
+    for (let i = 0; i < magCount; i++) {
+      let mx, my;
+      if (platforms.length > 0 && Math.random() > 0.25) {
+        const p = platforms[Math.floor(Math.random() * platforms.length)];
+        mx = p.x + Math.max(8, Math.random() * (p.w - 12));
+        my = p.y - 8;
+      } else {
+        mx = 600 + Math.random() * (LEVEL_WIDTH - 1200);
+        my = GROUND_Y - 12;
+      }
+      magazines.push({ x: mx, y: my, w: 10, h: 8, collected: false });
+    }
+
+    // Start boss levels with limited bullets
+    player.bullets = 20;
+    return;
+  }
+
+  // Spread NPCs evenly across the level, keeping them away from the start
+  const zone = (LEVEL_WIDTH - 400) / NPC_COUNT;
+  for (let i = 0; i < NPC_COUNT; i++) {
+    const wx = 500 + i * zone + Math.random() * (zone * 0.6);
+    npcs.push(makeNPC(wx));
+  }
+
+  // Start normal levels with limited bullets
+  player.bullets = 20;
+}
+
+function makeNPC(wx, isBoss = false, customHp = null, customDmg = null) {
+  const lvlNow = campaign.level || 1;
+  // dynamic per-level NPC HP when not a boss (use +1 HP per level)
+  const dynamicNpcHp = 10 + Math.max(0, lvlNow - 1) * 1;
+  const hpBase = isBoss ? (customHp || (BOSS_BASE_HP + (Math.floor(lvlNow / 10) - 1) * BOSS_HP_PER)) : dynamicNpcHp;
+  const dmgBase = isBoss ? (customDmg || (BOSS_BASE_DMG + (Math.floor(lvlNow / 10) - 1) * BOSS_DMG_PER)) : (0.5 * lvlNow);
+
+  const w = isBoss ? NPC_W * 2 : NPC_W;
+  const h = isBoss ? NPC_H * 2 : NPC_H;
+  const y = GROUND_Y - h;
+
+  return {
+    x: wx,
+    y: y,
+    vy: 0,
+    onGround: true,
+    hp: hpBase,
+    maxHp: hpBase,
+    dead: false,
+    deadTimer: 0,          // counts up after death
+    animTick: 0,
+    animFrame: 0,
+    touching: false,       // is it overlapping player this frame?
+    jumpCooldown: 0,
+    attackCooldown: 0,
+    attackCooldownFrames: isBoss ? BOSS_ATTACK_COOLDOWN_FRAMES : NPC_ATTACK_COOLDOWN_FRAMES,
+    isBoss: !!isBoss,
+    contactDamage: dmgBase,
+    w: w,
+    h: h
+  };
+}
+
+spawnNPCs();
+
+// ═══════════════════════════════════════════════════════════════
+//  DAMAGE NUMBERS
+// ═══════════════════════════════════════════════════════════════
+const dmgNumbers = [];
+
+function spawnDmgNumber(wx, y, amount, color) {
+  if (!settings.damageNumbers) return;
+  dmgNumbers.push({ x: wx, y, amount: Math.ceil(amount), color, life: 45, vy: -1.2 });
+}
+
+function updateDrawDmgNumbers() {
+  for (let i = dmgNumbers.length - 1; i >= 0; i--) {
+    const d = dmgNumbers[i];
+    d.y  += d.vy;
+    d.vy *= 0.94;
+    d.life--;
+    const alpha = Math.min(1, d.life / 20);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle   = d.color;
+    ctx.font        = '6px "Press Start 2P", monospace';
+    // isText = riel gain label, otherwise show damage
+    const label = d.isText ? ('+' + d.amount) : ('-' + d.amount);
+    ctx.fillText(label, wp(d.x), d.y);
+    ctx.globalAlpha = 1;
+    if (d.life <= 0) dmgNumbers.splice(i, 1);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RIEL PARTICLES
+// ═══════════════════════════════════════════════════════════════
+const rielParticles = [];
+
+function spawnRielParticles(wx, y) {
+  for (let i = 0; i < 5; i++) {
+    rielParticles.push({
+      x: wx + Math.random() * 12,
+      y: y  + Math.random() * 8,
+      vx: (Math.random() - 0.5) * 2.5,
+      vy: -Math.random() * 3 - 1,
+      life: 50,
+    });
+  }
+}
+
+function updateDrawRielParticles() {
+  for (let i = rielParticles.length - 1; i >= 0; i--) {
+    const p = rielParticles[i];
+    p.x  += p.vx; p.y += p.vy; p.vy += 0.18;
+    p.life--;
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillStyle   = '#f5c400';
+    ctx.fillRect(wp(p.x), p.y, PIXEL, PIXEL);
+    ctx.globalAlpha = 1;
+    if (p.life <= 0) rielParticles.splice(i, 1);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  NPC UPDATE
+// ═══════════════════════════════════════════════════════════════
+function updateNPCs() {
+  for (const n of npcs) {
+    if (n.dead) {
+      n.deadTimer++;
+      continue;
+    }
+
+    // Decrement attack cooldown
+    if (n.attackCooldown > 0) n.attackCooldown--;
+
+    // Active when on-screen — pursue immediately
+    const screenX = wp(n.x);
+    if (screenX < BASE_W + 40 && screenX > -80) {
+      const dir = (player.x + PLAYER_W / 2) < (n.x + n.w / 2) ? -1 : 1;
+      const gap = (player.x + PLAYER_W / 2) - (n.x + n.w / 2);
+      const speed = n.isBoss ? MOVE_SPEED : NPC_SPEED;
+      if (Math.abs(gap) > n.w * 0.6) {
+        n.x += dir * speed;
+      }
+
+      // Attempt to jump toward player or onto a platform in front
+      if (n.onGround && n.jumpCooldown <= 0) {
+        // If player is noticeably higher, try a jump
+        // Jump with same force as the player when needed
+        if (player.y + 2 < n.y - 12 && Math.abs(gap) < 220) {
+          n.vy = JUMP_FORCE; // match player's jump height
+          n.onGround = false;
+          n.jumpCooldown = 40;
+        } else {
+          // Look for a platform slightly ahead to jump onto
+          const aheadX = n.x + dir * 48;
+          // Compute NPC maximum reachable rise from a jump (kinematic)
+          const jumpApex = (Math.abs(JUMP_FORCE) * Math.abs(JUMP_FORCE)) / (2 * GRAVITY);
+          for (const p of platforms) {
+            if (aheadX + n.w > p.x && aheadX < p.x + p.w) {
+              const heightDiff = n.y - p.y; // positive if platform is above NPC
+              if (p.y < n.y && heightDiff <= jumpApex + 8) {
+                // Platform is reachable — perform full player jump
+                n.vy = JUMP_FORCE;
+                n.onGround = false;
+                n.jumpCooldown = 40;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Vertical physics
+    if (!n.onGround) {
+      n.vy += GRAVITY * 0.9; // slightly lighter gravity for NPCs
+      n.y += n.vy;
+    }
+
+    // Platform / ground collision for NPCs
+    n.onGround = false;
+    if (n.y + n.h >= GROUND_Y) {
+      n.y = GROUND_Y - n.h;
+      n.vy = 0;
+      n.onGround = true;
+    }
+    for (const p of platforms) {
+      const prevBottom = n.y + n.h - n.vy;
+      const curBottom = n.y + n.h;
+      const inX = n.x + n.w > p.x && n.x < p.x + p.w;
+      const crossTop = prevBottom <= p.y && curBottom >= p.y;
+      if (inX && crossTop && n.vy >= 0) {
+        n.y = p.y - n.h;
+        n.vy = 0;
+        n.onGround = true;
+      }
+    }
+
+    // Timers
+    if (n.jumpCooldown > 0) n.jumpCooldown--;
+
+    // Animate
+    n.animTick++;
+    if (n.animTick >= 12) { n.animTick = 0; n.animFrame = (n.animFrame + 1) % 2; }
+
+    // ── Collision with player — contact damage (with per-NPC cooldown) ──
+    n.touching = false;
+    if (!player.dead) {
+      const overlap =
+        player.x < n.x + n.w &&
+        player.x + PLAYER_W > n.x &&
+        player.y < n.y + n.h &&
+        player.y + PLAYER_H > n.y;
+
+      if (overlap) {
+        n.touching = true;
+        if (n.attackCooldown <= 0) {
+          damagePlayer(n.contactDamage);
+          n.attackCooldown = n.attackCooldownFrames;
+        }
+      }
+    }
+
+    // ── Bullet collision ──
+    for (let bi = bullets.length - 1; bi >= 0; bi--) {
+      const b = bullets[bi];
+      const hit =
+        b.x > n.x && b.x < n.x + n.w &&
+        b.y > n.y && b.y < n.y + n.h;
+      if (hit) {
+        bullets.splice(bi, 1);
+        n.hp -= player.gunDamage;
+        spawnDmgNumber(n.x, n.y - 4, player.gunDamage, '#f5c400');
+        if (n.hp <= 0) killNPC(n);
+        break;
+      }
+    }
+  }
+}
+
+function killNPC(n) {
+  n.dead      = true;
+  n.deadTimer = 0;
+  campaign.riels += 2;
+  spawnRielParticles(n.x, n.y);
+  spawnDmgNumber(n.x, n.y - 14, 0, '#2ecc71'); // show +2 KHR
+  // Override: show riel gain text instead
+  if (settings.damageNumbers) {
+    dmgNumbers.push({ x: n.x, y: n.y - 14, amount: '2 KHR', color: '#2ecc71', life: 55, vy: -1.0, isText: true });
+  }
+
+  // Reward bullets for kills (cap to 20)
+  player.bullets = Math.min(20, (player.bullets || 0) + 5);
+  // Show pickup text
+  if (settings.damageNumbers) {
+    dmgNumbers.push({ x: n.x, y: n.y - 4, amount: '+5 BUL', color: '#f5c400', life: 50, vy: -1.0, isText: true });
+  }
+
+  playDeathSound();
+
+  // Boss-specific rewards/effects
+  if (n.isBoss) {
+    campaign.bossesBeaten = (campaign.bossesBeaten || 0) + 1;
+    campaign.npcCount = (campaign.npcCount || 5) + 2;      // +2 NPCs per boss beaten
+    campaign.upgradeCost = (campaign.upgradeCost || 4) + 5; // +5 upgrade cost
+    // Random max HP bonus between 5 and 10
+    const hpBonus = Math.floor(Math.random() * 6) + 5;
+    campaign.maxHp = (campaign.maxHp || player.maxHp) + hpBonus;
+    player.maxHp += hpBonus;
+    player.hp = Math.min(player.maxHp, player.hp + hpBonus);
+  }
+
+  checkLevelClear();
+}
+
+function checkLevelClear() {
+  const allDead = npcs.every(n => n.dead);
+  if (allDead) {
+    // Advance level
+    campaign.level = (campaign.level || 1) + 1;
+    // Persist progress immediately
+    localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+
+    if (campaign.level > 100) {
+      // Player has beaten level 100 — victory
+      setTimeout(() => goToVictory(), 800);
+    } else {
+      // Small delay then go to shop for upgrades
+      setTimeout(() => goToShop(), 1200);
+    }
+  }
+}
+
+// Handle magazine pickups (called each frame)
+function updateMagazines() {
+  if (!magazines || magazines.length === 0) return;
+  for (let i = magazines.length - 1; i >= 0; i--) {
+    const m = magazines[i];
+    if (m.collected) continue;
+    // Simple overlap check with player
+    if (
+      player.x < m.x + m.w &&
+      player.x + PLAYER_W > m.x &&
+      player.y < m.y + m.h &&
+      player.y + PLAYER_H > m.y
+    ) {
+      m.collected = true;
+      // Give bullets and cap to max (20)
+      player.bullets = Math.min(20, (player.bullets || 0) + 5);
+      // Visual
+      dmgNumbers.push({ x: m.x, y: m.y - 8, amount: '+5 BUL', color: '#f5c400', life: 50, vy: -1.0, isText: true });
+      playPickupSound && playPickupSound();
+    }
+  }
+}
+
+function goToShop() {
+  // Sync campaign state
+  campaign.hp      = Math.ceil(player.hp);
+  campaign.maxHp   = player.maxHp;
+  campaign.lives   = player.lives;
+  campaign.gunDamage  = player.gunDamage;
+  // upgradeCost already tracked in campaign
+  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+  // Sync best riels
+  const best = parseInt(localStorage.getItem('bestRiels') || '0');
+  if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
+  window.location.href = 'shop.html';
+}
+
+function goToVictory() {
+  // Save final state and best score, then show simple victory message and return to level select
+  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+  const best = parseInt(localStorage.getItem('bestRiels') || '0');
+  if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
+  try { alert('CONGRATULATIONS — YOU BEAT RIEL RUNNER!'); } catch (e) {}
+  window.location.href = 'level-select.html';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PLAYER DAMAGE
+// ═══════════════════════════════════════════════════════════════
+function damagePlayer(amount, isTick) {
+  if (player.dead) return;
+  player.hp -= amount;
+  player.hitFlash = 20;
+  if (player.hp <= 0) {
+    player.hp = 0;
+    killPlayer();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAW NPCs
+// ═══════════════════════════════════════════════════════════════
+function drawNPCs() {
+  for (const n of npcs) {
+    const sx = wp(n.x);
+    if (sx > BASE_W + 40 || sx < -40) continue;
+
+    if (n.dead) {
+      // Show skull for 2 seconds (120 frames)
+      if (n.deadTimer < 120) {
+        drawSkull(n.x, n.y);
+      }
+      continue;
+    }
+
+    const by = n.y;
+
+    if (n.isBoss) {
+      // Boss: larger solid block with different color
+      const bossColor = n.touching ? '#e74c3c' : '#2e86de'; // blue boss
+      ctx.fillStyle = bossColor;
+      ctx.fillRect(sx, by, n.w, n.h);
+
+      // Simple eye
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(sx + Math.round(n.w/4), by + Math.round(n.h/4), PIXEL, PIXEL);
+      ctx.fillRect(sx + Math.round(n.w*3/4)-PIXEL, by + Math.round(n.h/4), PIXEL, PIXEL);
+
+      // HP bar larger
+      if (settings.hpBars) {
+        const bw = n.w + 8;
+        ctx.fillStyle = '#c0392b';
+        ctx.fillRect(sx - 4, by - 10, bw, 6);
+        ctx.fillStyle = '#2ecc71';
+        ctx.fillRect(sx - 4, by - 10, Math.max(0, bw * (n.hp / n.maxHp)), 6);
+      }
+
+      continue;
+    }
+
+    // Flash red briefly when hit (hitFlash stored on npc)
+    const S  = PIXEL;
+
+    function ep(col, row, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(sx + col * S, by + row * S, S, S);
+    }
+
+    const body = n.touching ? '#e74c3c' : '#c0392b';
+    const eye  = '#f5c400';
+    const boot = '#222233';
+
+    // Head
+    ep(1,0,body); ep(2,0,body); ep(3,0,body); ep(4,0,body);
+    ep(0,1,body); ep(1,1,eye);  ep(2,1,body); ep(3,1,eye);  ep(4,1,body); ep(5,1,body);
+    ep(0,2,body); ep(1,2,body); ep(2,2,body); ep(3,2,body); ep(4,2,body); ep(5,2,body);
+    // Body
+    for(let c=0;c<=5;c++){ ep(c,3,body); ep(c,4,body); }
+    // Legs animated
+    if (n.animFrame === 0) {
+      ep(1,5,boot); ep(3,5,boot); ep(1,6,boot); ep(3,6,boot);
+    } else {
+      ep(0,5,boot); ep(2,5,boot); ep(1,6,boot); ep(4,6,boot);
+    }
+
+    // HP bar (respects settings)
+    if (settings.hpBars) {
+      const bw = n.w + 4;
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(sx - 2, by - 7, bw, 4);
+      ctx.fillStyle = '#2ecc71';
+      ctx.fillRect(sx - 2, by - 7, Math.max(0, bw * (n.hp / n.maxHp)), 4);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DEATH / RESPAWN
+// ═══════════════════════════════════════════════════════════════
+function killPlayer() {
+  if (player.dead) return;
+  player.dead    = true;
+  player.deathX  = player.x;
+  player.lives--;
+  player.respawnTimer = 120; // 2 seconds
+
+  // When out of bullets we also want to notify
+  if ((player.bullets || 0) <= 0) showToast('OUT OF BULLETS — LIFE LOST');
+
+  if (player.lives <= 0) {
+    // Zone reset
+    handleZoneFail();
+  }
+}
+
+function respawnPlayer() {
+  player.dead    = false;
+  player.hp      = player.maxHp;
+  // Spawn slightly behind (to the left of) death point
+  player.x       = Math.max(0, player.deathX - 80);
+  player.y       = GROUND_Y - PLAYER_H;
+  player.vx      = 0;
+  player.vy      = 0;
+  player.hitFlash = 0;
+}
+
+function handleZoneFail() {
+  // TODO chunk 4 — for now just reload
+  setTimeout(() => { window.location.href = 'level-select.html'; }, 2000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SOUND (chunk 2 — basic gunshot using Web Audio)
+// ═══════════════════════════════════════════════════════════════
+let audioCtx;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playGunshot() {
+  try {
+    const ac  = getAudio();
+    const buf = ac.createBuffer(1, ac.sampleRate * 0.08, ac.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    }
+    const src  = ac.createBufferSource();
+    const gain = ac.createGain();
+    src.buffer = buf;
+    gain.gain.setValueAtTime(0.18, ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.08);
+    src.connect(gain); gain.connect(ac.destination);
+    src.start();
+  } catch {}
+}
+
+function playDeathSound() {
+  try {
+    const ac  = getAudio();
+    const buf = ac.createBuffer(1, ac.sampleRate * 0.15, ac.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      const t = i / d.length;
+      d[i] = (Math.random() * 2 - 1) * (1 - t) * 0.6 * Math.sin(t * 8);
+    }
+    const src  = ac.createBufferSource();
+    const gain = ac.createGain();
+    src.buffer = buf;
+    gain.gain.setValueAtTime(0.22, ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.15);
+    src.connect(gain); gain.connect(ac.destination);
+    src.start();
+  } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAWING HELPERS
+// ═══════════════════════════════════════════════════════════════
+function wp(x) { return Math.round(x - camX); }  // world → screen x
+
+function drawRect(wx, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(wp(wx), y, w, h);
+}
+
+// Pixel sprite helper (draws PIXEL-scaled blocks)
+function sp(wx, y, px2, py, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(wp(wx) + px2 * PIXEL, y + py * PIXEL, PIXEL, PIXEL);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAW PLAYER SPRITE
+// ═══════════════════════════════════════════════════════════════
+function drawPlayer() {
+  if (player.dead) {
+    // Skull at death position
+    drawSkull(player.deathX, player.y);
+    return;
+  }
+
+  // Hit flash — alternate transparency
+  if (player.hitFlash > 0 && Math.floor(player.hitFlash / 3) % 2 === 0) {
+    ctx.globalAlpha = 0.35;
+  }
+
+  const bx = player.x;
+  const by = player.y;
+  const S  = PIXEL;
+  const f  = player.facingRight;
+
+  function p(col, row, color) {
+    // Mirror horizontally if facing left
+    const drawCol = f ? col : (8 - col);
+    ctx.fillStyle = color;
+    ctx.fillRect(wp(bx) + drawCol * S, by + row * S, S, S);
+  }
+
+  const skin    = '#f5c89a';
+  const hair    = '#222222';
+  const jacket  = '#2255cc';
+  const boot    = '#3d2b1f';
+  const gunC    = '#888870';
+  const barrel  = '#ccccaa';
+  const flash   = '#f5c400';
+
+  // Head
+  p(2,0,hair); p(3,0,hair); p(4,0,hair);
+  p(1,1,skin); p(2,1,skin); p(3,1,skin); p(4,1,skin); p(5,1,hair);
+  p(1,2,skin); p(2,2,skin); p(3,2,'#111'); p(4,2,skin); p(5,2,skin);
+
+  // Body
+  for(let c=1;c<=5;c++){ p(c,3,jacket); p(c,4,jacket); }
+
+  // Gun arm (always on right side of body = col 6+)
+  p(6,3,skin); p(7,3,gunC); p(8,3,gunC);
+  if (player.gunFlash > 0) { p(9,3,flash); p(9,2,flash); }
+
+  // Legs
+  const lf = player.animFrame;
+  if (lf === 0) {
+    p(2,5,jacket); p(3,5,jacket); p(4,5,jacket);
+    p(2,6,boot);   p(4,6,boot);
+    p(2,7,boot);   p(4,7,boot);
+  } else if (lf === 1) {
+    p(2,5,jacket); p(3,5,jacket); p(4,5,jacket);
+    p(1,6,boot);   p(3,6,boot);
+    p(1,7,boot);   p(4,7,boot);
+  } else {
+    p(2,5,jacket); p(3,5,jacket); p(4,5,jacket);
+    p(2,6,boot);   p(4,6,boot);
+    p(3,7,boot);   p(5,7,boot);
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SKULL SPRITE
+// ═══════════════════════════════════════════════════════════════
+function drawSkull(wx, y) {
+  const S = PIXEL;
+  function p(col, row, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(wp(wx) + col * S, y + row * S, S, S);
+  }
+  const w = '#e8e8d0', d = '#0a0e1a';
+  p(1,0,w);p(2,0,w);p(3,0,w);
+  p(0,1,w);p(1,1,d);p(2,1,w);p(3,1,d);p(4,1,w);
+  p(0,2,w);p(1,2,w);p(2,2,w);p(3,2,w);p(4,2,w);
+  p(1,3,w);p(2,3,d);p(3,3,w);
+  p(1,4,w);p(2,4,w);p(3,4,w);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAW BACKGROUND + GROUND
+// ═══════════════════════════════════════════════════════════════
+function drawWorld() {
+  // Sky
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, BASE_W, BASE_H);
+
+  // Pixel grid (parallax slow)
+  ctx.fillStyle = 'rgba(245,196,0,0.04)';
+  const gridSize = 32;
+  const offX = (-camX * 0.3) % gridSize;
+  for (let x = offX % gridSize; x < BASE_W; x += gridSize) ctx.fillRect(x, 0, 1, GROUND_Y);
+  for (let y = 0; y < GROUND_Y; y += gridSize) ctx.fillRect(0, y, BASE_W, 1);
+
+  // Far background pillars (parallax)
+  ctx.fillStyle = 'rgba(20,26,50,0.9)';
+  const pillarOff = (-camX * 0.2) % 120;
+  for (let x = pillarOff % 120; x < BASE_W; x += 120) {
+    ctx.fillRect(x, 0, 12, GROUND_Y);
+  }
+
+  // Platforms
+  for (const p of platforms) {
+    const sx = wp(p.x);
+    if (sx > BASE_W || sx + p.w < 0) continue;
+    ctx.fillStyle = '#1a2244';
+    ctx.fillRect(sx, p.y, p.w, p.h);
+    ctx.fillStyle = '#f5c400';
+    ctx.fillRect(sx, p.y, p.w, 2);
+    // pixel tile detail
+    ctx.fillStyle = 'rgba(245,196,0,0.15)';
+    for (let tx = sx; tx < sx + p.w; tx += 16) ctx.fillRect(tx, p.y + 2, 8, p.h - 2);
+  }
+
+  // Ground
+  ctx.fillStyle = '#1a1e30';
+  ctx.fillRect(0, GROUND_Y, BASE_W, FLOOR_H);
+  ctx.fillStyle = '#f5c400';
+  ctx.fillRect(0, GROUND_Y, BASE_W, 3);
+  ctx.fillStyle = '#b8920a';
+  ctx.fillRect(0, GROUND_Y + 3, BASE_W, 3);
+  // Ground tile detail
+  ctx.fillStyle = 'rgba(245,196,0,0.07)';
+  const tOff = (-camX) % 32;
+  for (let x = tOff % 32; x < BASE_W; x += 32) ctx.fillRect(x, GROUND_Y + 6, 16, FLOOR_H - 6);
+
+  // Level end marker (right side of corridor)
+  const endX = wp(LEVEL_WIDTH - 30);
+  if (endX < BASE_W && endX > -30) {
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(endX, 0, 6, GROUND_Y);
+    ctx.fillStyle = '#fff';
+    ctx.font = '7px monospace';
+    ctx.fillText('END', endX - 10, GROUND_Y - 10);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAW BULLETS
+// ═══════════════════════════════════════════════════════════════
+function drawBullets() {
+  for (const b of bullets) {
+    const sx = wp(b.x);
+    // Trail
+    ctx.fillStyle = 'rgba(245,196,0,0.3)';
+    ctx.fillRect(sx - b.dx * 8, b.y - b.dy * 8, 8, 3);
+    // Bullet
+    ctx.fillStyle = '#f5c400';
+    ctx.fillRect(sx, b.y, 10, 3);
+  }
+}
+
+function drawMagazines() {
+  for (const m of magazines) {
+    if (m.collected) continue;
+    const sx = wp(m.x);
+    if (sx < -40 || sx > BASE_W + 40) continue;
+    ctx.fillStyle = '#444450';
+    ctx.fillRect(sx, m.y, m.w, m.h);
+    ctx.fillStyle = '#f5c400';
+    ctx.fillRect(sx + 2, m.y + 2, m.w - 4, m.h - 4);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  HUD  (chunk 4 will flesh this out — basic skeleton now)
+// ═══════════════════════════════════════════════════════════════
+function drawHUD() {
+  // HP bar background
+  ctx.fillStyle = '#0f1526';
+  ctx.fillRect(10, 10, 160, 14);
+  ctx.fillStyle = '#c0392b';
+  ctx.fillRect(10, 10, 160, 14);
+  ctx.fillStyle = '#2ecc71';
+  const hpW = Math.max(0, 160 * (player.hp / player.maxHp));
+  ctx.fillRect(10, 10, hpW, 14);
+  ctx.fillStyle = '#e8e8d0';
+  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText('HP ' + Math.ceil(player.hp) + '/' + player.maxHp, 14, 21);
+
+  // Lives
+  ctx.fillStyle = '#c0392b';
+  ctx.font = '10px "Press Start 2P", monospace';
+  for (let i = 0; i < player.lives; i++) {
+    ctx.fillText('♥', 10 + i * 16, 40);
+  }
+
+  // Level + Riels
+  ctx.fillStyle = '#f5c400';
+  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.fillText('LVL ' + campaign.level, BASE_W - 120, 20);
+  ctx.fillStyle = '#e8e8d0';
+  ctx.fillText(campaign.riels + ' KHR', BASE_W - 120, 34);
+
+  // Gun damage
+  ctx.fillStyle = '#888870';
+  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText('DMG ' + player.gunDamage, BASE_W - 120, 46);
+
+  // Bullets remaining
+  ctx.fillStyle = '#f5c400';
+  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText('BUL ' + (player.bullets || 0), BASE_W - 120, 58);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MAIN LOOP
+// ═══════════════════════════════════════════════════════════════
+let lastTime = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+
+  updatePlayer();
+  updateBullets();
+  updateNPCs();
+  // magazines pickup
+  updateMagazines && updateMagazines();
+
+  // Draw
+  drawWorld();
+  drawBullets();
+  drawMagazines();
+  drawNPCs();
+  drawPlayer();
+  updateDrawRielParticles();
+  updateDrawDmgNumbers();
+  drawHUD();
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

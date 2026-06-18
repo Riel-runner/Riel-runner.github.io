@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riel Runner — Shop</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: #0a0e1a;
+    font-family: 'Press Start 2P', monospace;
+    color: #e8e8d0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(245,196,0,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245,196,0,0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.12) 2px, rgba(0,0,0,0.12) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .page {
+    position: relative;
+    z-index: 5;
+    width: 100%;
+    max-width: 700px;
+    padding: 36px 24px 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── HEADER ── */
+  .page-title {
+    font-size: clamp(18px, 5vw, 28px);
+    color: #f5c400;
+    letter-spacing: 0.15em;
+    text-shadow: 3px 3px #b8920a, 6px 6px #3d2b1f;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+
+  .level-badge {
+    font-size: 8px;
+    color: #888870;
+    letter-spacing: 0.2em;
+    margin-bottom: 28px;
+    text-align: center;
+  }
+
+  .level-badge span { color: #f5c400; }
+
+  .divider {
+    width: 100%;
+    height: 3px;
+    background: repeating-linear-gradient(
+      90deg, #f5c400 0px, #f5c400 8px,
+      transparent 8px, transparent 16px
+    );
+    opacity: 0.25;
+    margin-bottom: 28px;
+  }
+
+  /* ── WALLET BAR ── */
+  .wallet-bar {
+    width: 100%;
+    background: #0f1526;
+    border: 2px solid #1e2440;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    gap: 12px;
+  }
+
+  .wallet-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .coin-icon {
+    width: 16px;
+    height: 16px;
+    background: #f5c400;
+    flex-shrink: 0;
+    position: relative;
+    image-rendering: pixelated;
+  }
+
+  .coin-icon::after {
+    content: '₭';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: #0a0e1a;
+    font-family: monospace;
+  }
+
+  .wallet-label {
+    font-size: 7px;
+    color: #888870;
+    letter-spacing: 0.15em;
+  }
+
+  .wallet-amount {
+    font-size: clamp(14px, 3.5vw, 20px);
+    color: #f5c400;
+    letter-spacing: 0.05em;
+  }
+
+  .wallet-unit {
+    font-size: 7px;
+    color: #888870;
+    letter-spacing: 0.1em;
+    margin-top: 4px;
+  }
+
+  /* ── STATS ROW ── */
+  .stats-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: #0f1526;
+    border: 2px solid #1e2440;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .stat-card-label {
+    font-size: 6px;
+    color: #555566;
+    letter-spacing: 0.15em;
+  }
+
+  .stat-card-value {
+    font-size: clamp(10px, 2.5vw, 14px);
+    color: #e8e8d0;
+  }
+
+  .stat-card-value.green { color: #2ecc71; }
+  .stat-card-value.red   { color: #c0392b; }
+  .stat-card-value.gold  { color: #f5c400; }
+
+  /* ── SHOP ITEM CARD ── */
+  .shop-section-label {
+    width: 100%;
+    font-size: 7px;
+    color: #f5c400;
+    letter-spacing: 0.3em;
+    opacity: 0.7;
+    margin-bottom: 14px;
+  }
+
+  .item-card {
+    width: 100%;
+    background: #0f1526;
+    border: 3px solid #1e2440;
+    padding: 24px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 12px;
+    transition: border-color 0.1s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .item-card.affordable { border-color: #2a3a20; }
+  .item-card.affordable:hover { border-color: #2ecc71; }
+  .item-card.cant-afford { border-color: #1e2440; opacity: 0.6; }
+  .item-card.maxed { border-color: #3a3010; }
+
+  /* Pixel gun art */
+  #gun-canvas {
+    flex-shrink: 0;
+    image-rendering: pixelated;
+  }
+
+  .item-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .item-name {
+    font-size: clamp(10px, 2.5vw, 13px);
+    color: #e8e8d0;
+    letter-spacing: 0.08em;
+  }
+
+  .item-desc {
+    font-size: 7px;
+    color: #555566;
+    letter-spacing: 0.1em;
+    line-height: 1.9;
+  }
+
+  /* Damage preview */
+  .dmg-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .dmg-current {
+    font-size: 10px;
+    color: #888870;
+    letter-spacing: 0.05em;
+  }
+
+  .dmg-arrow {
+    font-size: 10px;
+    color: #f5c400;
+  }
+
+  .dmg-next {
+    font-size: 10px;
+    color: #2ecc71;
+    letter-spacing: 0.05em;
+  }
+
+  .item-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .item-cost {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  .cost-amount {
+    font-size: clamp(12px, 3vw, 16px);
+    color: #f5c400;
+  }
+
+  .cost-unit {
+    font-size: 6px;
+    color: #888870;
+    letter-spacing: 0.1em;
+  }
+
+  /* Buy button */
+  .btn-buy {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    padding: 10px 16px;
+    cursor: pointer;
+    border: none;
+    background: #2ecc71;
+    color: #0a0e1a;
+    box-shadow: 0 4px #1a7a40;
+    transition: transform 0.08s;
+    white-space: nowrap;
+  }
+
+  .btn-buy:hover { background: #3ddd82; }
+  .btn-buy:active { transform: translateY(3px); box-shadow: 0 1px #1a7a40; }
+
+  .btn-buy:disabled {
+    background: #1e2440;
+    color: #333355;
+    box-shadow: 0 4px #111122;
+    cursor: not-allowed;
+  }
+
+  .btn-buy.maxed-btn {
+    background: #b8920a;
+    color: #0a0e1a;
+    box-shadow: 0 4px #7a5c00;
+    cursor: default;
+  }
+
+  /* Upgrade count pips */
+  .upgrade-pips {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    max-width: 160px;
+    justify-content: flex-end;
+  }
+
+  .pip {
+    width: 8px;
+    height: 8px;
+    background: #1e2440;
+  }
+
+  .pip.filled { background: #f5c400; }
+
+  /* ── CONTINUE BUTTON ── */
+  .continue-section {
+    width: 100%;
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .btn-continue {
+    width: 100%;
+    max-width: 360px;
+    padding: 16px 0;
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(10px, 2.5vw, 13px);
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border: none;
+    background: #f5c400;
+    color: #0a0e1a;
+    box-shadow: 0 6px #b8920a, 0 8px #3d2b1f;
+    transition: transform 0.08s;
+    text-align: center;
+  }
+
+  .btn-continue:hover { background: #ffe033; }
+  .btn-continue:active { transform: translateY(4px); box-shadow: 0 2px #b8920a, 0 3px #3d2b1f; }
+
+  .skip-note {
+    font-size: 7px;
+    color: #333344;
+    letter-spacing: 0.1em;
+  }
+
+  /* ── PURCHASE FLASH ── */
+  .purchase-flash {
+    position: fixed;
+    inset: 0;
+    background: rgba(46, 204, 113, 0.08);
+    pointer-events: none;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .purchase-flash.show { opacity: 1; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: #1e2440;
+    border: 2px solid #f5c400;
+    color: #f5c400;
+    font-size: 8px;
+    padding: 10px 18px;
+    letter-spacing: 0.1em;
+    z-index: 200;
+    transition: transform 0.25s;
+    white-space: nowrap;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .version {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    font-size: 6px;
+    color: #222233;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<div class="purchase-flash" id="purchase-flash"></div>
+
+<div class="page">
+
+  <div class="page-title">SHOP</div>
+  <div class="level-badge">LEVEL <span id="level-display">—</span> COMPLETE</div>
+  <div class="divider"></div>
+
+  <!-- Wallet -->
+  <div class="wallet-bar">
+    <div class="wallet-left">
+      <div class="coin-icon"></div>
+      <div>
+        <div class="wallet-label">YOUR RIELS</div>
+        <div class="wallet-unit">CAMBODIAN RIEL (KHR)</div>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div class="wallet-amount" id="riels-display">0</div>
+      <div class="wallet-unit">KHR</div>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-card-label">YOUR HP</div>
+      <div class="stat-card-value green" id="hp-display">150</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">LIVES</div>
+      <div class="stat-card-value" id="lives-display">&#9829;&#9829;&#9829;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">UPGRADES</div>
+      <div class="stat-card-value gold" id="upgrades-display">0</div>
+    </div>
+  </div>
+
+  <!-- Shop item -->
+  <div class="shop-section-label">&#9632; AVAILABLE UPGRADES</div>
+
+  <div class="item-card" id="item-card">
+    <canvas id="gun-canvas" width="80" height="32"></canvas>
+    <div class="item-info">
+      <div class="item-name">GUN DAMAGE UP</div>
+      <div class="item-desc">
+        INCREASES YOUR GUN'S DAMAGE BY +3.<br>
+        EACH UPGRADE COSTS MORE THAN THE LAST.
+      </div>
+      <div class="dmg-preview">
+        <span class="dmg-current" id="dmg-current">2 DMG</span>
+        <span class="dmg-arrow">&#9658;</span>
+        <span class="dmg-next" id="dmg-next">6 DMG</span>
+      </div>
+      <div class="upgrade-pips" id="upgrade-pips"></div>
+    </div>
+    <div class="item-right">
+      <div class="item-cost">
+        <div class="cost-amount" id="cost-display">4</div>
+        <div class="cost-unit">KHR</div>
+      </div>
+      <button class="btn-buy" id="btn-buy" onclick="buyUpgrade()">BUY</button>
+    </div>
+  </div>
+
+  <!-- Continue -->
+  <div class="continue-section">
+    <button class="btn-continue" onclick="continueToGame()">
+      CONTINUE &#9658;
+    </button>
+    <div class="skip-note">YOU CAN SAVE YOUR RIELS FOR LATER</div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="version">v0.1.0 RIEL RUNNER</div>
+
+<script>
+// ─── LOAD CAMPAIGN ───────────────────────────────────────────────────
+let campaign;
+try {
+  campaign = JSON.parse(localStorage.getItem('activeCampaign'));
+} catch { campaign = null; }
+
+if (!campaign) {
+  // Fallback defaults if somehow landed here directly
+  campaign = {
+    level: 1, riels: 0, hp: 150, maxHp: 150,
+    lives: 3, gunDamage: 2, upgradeCount: 0,
+    upgradeCost: 4, npcCount: 5, bossesBeaten: 0
+  };
+}
+
+// ─── PIXEL GUN DRAWING ───────────────────────────────────────────────
+const gunCanvas = document.getElementById('gun-canvas');
+const gctx = gunCanvas.getContext('2d');
+gctx.imageSmoothingEnabled = false;
+const GS = 4;
+
+function drawGun(upgradeLevel) {
+  gctx.clearRect(0, 0, gunCanvas.width, gunCanvas.height);
+  const base   = '#888870';
+  const barrel = '#ccccaa';
+  const grip   = '#3d2b1f';
+  const accent = upgradeLevel > 0 ? '#f5c400' : '#444450';
+  const glow   = upgradeLevel > 3 ? '#2ecc71' : (upgradeLevel > 0 ? '#f5c400' : null);
+
+  function gp(x, y, c) {
+    gctx.fillStyle = c;
+    gctx.fillRect(x * GS, y * GS, GS, GS);
+  }
+
+  // Handle / grip
+  gp(1,3,grip); gp(1,4,grip); gp(2,3,grip); gp(2,4,grip);
+  gp(1,5,grip); gp(2,5,grip);
+
+  // Body
+  gp(2,2,base); gp(3,2,base); gp(4,2,base);
+  gp(2,3,base); gp(3,3,base); gp(4,3,base); gp(5,3,base);
+
+  // Barrel
+  gp(5,2,barrel); gp(6,2,barrel); gp(7,2,barrel);
+  gp(8,2,barrel); gp(9,2,barrel); gp(10,2,barrel);
+  gp(11,2,barrel); gp(12,2,barrel);
+
+  // Accent stripe (grows with upgrades)
+  if(upgradeLevel > 0) {
+    const stripeLen = Math.min(upgradeLevel + 1, 8);
+    for(let i = 0; i < stripeLen; i++) gp(5 + i, 1, accent);
+  }
+
+  // Glow tip
+  if(glow) {
+    gctx.fillStyle = glow + '66';
+    gctx.fillRect(12 * GS, 0, GS * 2, GS * 4);
+    gp(13, 2, glow);
+  }
+
+  // Trigger
+  gp(3,4,base);
+
+  // Upgrade indicator dots on body
+  if(upgradeLevel > 0) {
+    gp(3,2,accent);
+    if(upgradeLevel > 2) gp(4,2,accent);
+    if(upgradeLevel > 5) gp(5,3,accent);
+  }
+}
+
+// ─── RENDER UI ───────────────────────────────────────────────────────
+function render() {
+  document.getElementById('level-display').textContent = campaign.level;
+  document.getElementById('riels-display').textContent = campaign.riels;
+  document.getElementById('hp-display').textContent = campaign.hp + ' / ' + campaign.maxHp;
+  document.getElementById('lives-display').innerHTML = '&#9829;'.repeat(campaign.lives);
+  document.getElementById('upgrades-display').textContent = campaign.upgradeCount;
+
+  const cost = campaign.upgradeCost;
+  const canAfford = campaign.riels >= cost;
+
+  document.getElementById('dmg-current').textContent = campaign.gunDamage + ' DMG';
+  document.getElementById('dmg-next').textContent = (campaign.gunDamage + 3) + ' DMG';
+  document.getElementById('cost-display').textContent = cost;
+
+  const btn = document.getElementById('btn-buy');
+  const card = document.getElementById('item-card');
+
+  btn.disabled = !canAfford;
+  card.className = 'item-card ' + (canAfford ? 'affordable' : 'cant-afford');
+
+  // Upgrade pips (show last 20 upgrades max)
+  const pips = document.getElementById('upgrade-pips');
+  pips.innerHTML = '';
+  const shown = Math.min(campaign.upgradeCount, 20);
+  for(let i = 0; i < 20; i++) {
+    const pip = document.createElement('div');
+    pip.className = 'pip' + (i < shown ? ' filled' : '');
+    pips.appendChild(pip);
+  }
+
+  drawGun(campaign.upgradeCount);
+}
+
+// ─── BUY UPGRADE ─────────────────────────────────────────────────────
+function buyUpgrade() {
+  if(campaign.riels < campaign.upgradeCost) {
+    showToast('NOT ENOUGH RIELS!');
+    return;
+  }
+
+  campaign.riels       -= campaign.upgradeCost;
+  campaign.gunDamage   += 3; // reduced upgrade power
+  campaign.upgradeCount++;
+  campaign.upgradeCost += 2; // base level increment (boss increments handled in game.html)
+
+  // Flash
+  const flash = document.getElementById('purchase-flash');
+  flash.classList.add('show');
+  setTimeout(() => flash.classList.remove('show'), 300);
+
+  saveCampaign();
+  render();
+  showToast('+3 DAMAGE! GUN NOW ' + campaign.gunDamage + ' DMG');
+}
+
+// ─── SAVE & CONTINUE ─────────────────────────────────────────────────
+function saveCampaign() {
+  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+
+  // Also update in campaigns array
+  const idx = parseInt(localStorage.getItem('activeCampaignIdx'));
+  if(!isNaN(idx)) {
+    try {
+      const campaigns = JSON.parse(localStorage.getItem('rielrunner_campaigns')) || [];
+      if(campaigns[idx]) {
+        campaigns[idx] = { ...campaigns[idx], ...campaign, lastPlayed: Date.now() };
+        localStorage.setItem('rielrunner_campaigns', JSON.stringify(campaigns));
+      }
+    } catch {}
+  }
+
+  // Track best riels ever
+  const best = parseInt(localStorage.getItem('bestRiels') || '0');
+  if(campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
+}
+
+function continueToGame() {
+  // Level already advanced by game.html on clear; preserve it here
+  campaign.lives = 3; // lives reset each zone handled in game.html, here just persist
+  saveCampaign();
+  window.location.href = 'game.html';
+}
+
+// ─── TOAST ───────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>

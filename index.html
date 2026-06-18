@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riel Runner</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: #0a0e1a;
+    font-family: 'Press Start 2P', monospace;
+    color: #e8e8d0;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  /* Animated background canvas */
+  #bg-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    z-index: 0;
+  }
+
+  /* Dark overlay so menu stays readable */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 14, 26, 0.72);
+    z-index: 1;
+  }
+
+  /* CRT scanline */
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.13) 2px,
+      rgba(0,0,0,0.13) 4px
+    );
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 5;
+    width: 100%;
+    max-width: 700px;
+    padding: 0 1rem;
+  }
+
+  .title-block {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+
+  .title-top {
+    font-size: clamp(9px, 2.2vw, 12px);
+    color: #f5c400;
+    letter-spacing: 0.35em;
+    margin-bottom: 14px;
+    text-shadow: 2px 2px #3d2b1f;
+  }
+
+  .title-main {
+    font-size: clamp(30px, 8vw, 58px);
+    color: #f5c400;
+    line-height: 1.1;
+    text-shadow:
+      4px 4px #b8920a,
+      8px 8px #3d2b1f;
+  }
+
+  .title-sub {
+    font-size: clamp(6px, 1.6vw, 9px);
+    color: #888870;
+    margin-top: 14px;
+    letter-spacing: 0.2em;
+  }
+
+  .tagline-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 28px;
+    align-items: center;
+  }
+
+  .coin-dot {
+    width: 8px;
+    height: 8px;
+    background: #f5c400;
+  }
+
+  .coin-label {
+    font-size: clamp(7px, 1.6vw, 9px);
+    color: #f5c400;
+    letter-spacing: 0.15em;
+  }
+
+  .stat-row {
+    font-size: 8px;
+    color: #555566;
+    letter-spacing: 0.15em;
+    margin-bottom: 28px;
+    text-align: center;
+    line-height: 2.2;
+  }
+
+  .stat-row span { color: #f5c400; }
+
+  .btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 14px 0;
+    text-align: center;
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(9px, 2vw, 12px);
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    position: relative;
+    transition: transform 0.08s;
+  }
+
+  .btn:active { transform: translateY(3px); }
+
+  .btn-play {
+    background: #f5c400;
+    color: #0a0e1a;
+    box-shadow: 0 6px #b8920a, 0 8px #3d2b1f;
+  }
+  .btn-play:hover { background: #ffe033; }
+  .btn-play:active { box-shadow: 0 2px #b8920a, 0 3px #3d2b1f; }
+
+  .btn-secondary {
+    background: transparent;
+    color: #e8e8d0;
+    border: 3px solid #444450;
+    box-shadow: 0 6px #222230, 0 8px #0a0e1a;
+  }
+  .btn-secondary:hover { border-color: #f5c400; color: #f5c400; }
+  .btn-secondary:active { box-shadow: 0 2px #222230, 0 3px #0a0e1a; }
+
+  .blink { animation: blink 1s step-end infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .pixel-border {
+    width: 100%;
+    max-width: 400px;
+    height: 4px;
+    background: repeating-linear-gradient(
+      90deg,
+      #f5c400 0px, #f5c400 8px,
+      transparent 8px, transparent 16px
+    );
+    margin: 22px 0 0;
+    opacity: 0.35;
+  }
+
+  .version {
+    position: absolute;
+    bottom: 14px;
+    right: 18px;
+    font-size: 7px;
+    color: #333344;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div class="overlay"></div>
+<div class="scanlines"></div>
+
+<div class="container">
+  <div class="title-block">
+    <div class="title-top">&#9632; ARCADE &#9632;</div>
+    <div class="title-main">RIEL<br>RUNNER</div>
+    <div class="title-sub">100 LEVELS &nbsp;&#183;&nbsp; 10 BOSSES &nbsp;&#183;&nbsp; 1 GUN</div>
+  </div>
+
+  <div class="tagline-row">
+    <div class="coin-dot"></div>
+    <div class="coin-dot"></div>
+    <div class="coin-label">CAN YOU HANDLE 100 LEVELS?</div>
+    <div class="coin-dot"></div>
+    <div class="coin-dot"></div>
+  </div>
+
+  <div class="stat-row">
+    MOST RIELS EVER: <span id="best-riels">---</span>
+  </div>
+
+  <div class="btn-group">
+    <a class="btn btn-play" href="level-select.html">
+      <span class="blink">&#9658;</span> &nbsp; PLAY
+    </a>
+    <a class="btn btn-secondary" href="settings.html">
+      &#9881; &nbsp; SETTINGS
+    </a>
+  </div>
+
+  <div class="pixel-border"></div>
+</div>
+
+<div class="version">v0.1.0 &nbsp; RIEL RUNNER</div>
+
+<script>
+// ─── BACKGROUND ANIMATION ───────────────────────────────────────────
+const bgCanvas = document.getElementById('bg-canvas');
+const ctx = bgCanvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+let W, H;
+function resize() {
+  W = bgCanvas.width = window.innerWidth;
+  H = bgCanvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const S = 3; // pixel scale
+
+function px(x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x * S, y * S, S, S);
+}
+
+function rect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x * S, y * S, w * S, h * S);
+}
+
+// ─── SCROLLING BACKGROUND TILES ─────────────────────────────────────
+let scrollX = 0;
+const TILE = 16;
+const FLOOR_Y = Math.floor(H / S) - 10;
+
+function drawBackground() {
+  // Sky
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.fillStyle = 'rgba(245,196,0,0.04)';
+  const gridSize = TILE * S;
+  const offX = (scrollX * S) % gridSize;
+  for (let x = -gridSize + offX; x < W; x += gridSize) {
+    ctx.fillRect(x, 0, 1, H);
+  }
+  for (let y = 0; y < H; y += gridSize) {
+    ctx.fillRect(0, y, W, 1);
+  }
+
+  // Floor
+  const floorPxY = FLOOR_Y * S;
+  ctx.fillStyle = '#1a1e30';
+  ctx.fillRect(0, floorPxY, W, H - floorPxY);
+  ctx.fillStyle = '#f5c400';
+  ctx.fillRect(0, floorPxY, W, 2);
+  ctx.fillStyle = '#b8920a';
+  ctx.fillRect(0, floorPxY + 2, W, 2);
+
+  // Scrolling floor tiles
+  ctx.fillStyle = 'rgba(245,196,0,0.07)';
+  const tileW = TILE * S;
+  const tileOff = Math.floor(scrollX * S) % (tileW * 2);
+  for (let x = -tileOff; x < W; x += tileW * 2) {
+    ctx.fillRect(x, floorPxY + 4, tileW, H);
+  }
+
+  // Background pillars (parallax, slow scroll)
+  const pillarOff = Math.floor(scrollX * 0.3 * S) % (40 * S);
+  ctx.fillStyle = 'rgba(30,35,60,0.8)';
+  for (let x = -pillarOff; x < W; x += 40 * S) {
+    ctx.fillRect(x, 0, 4 * S, floorPxY);
+  }
+}
+
+// ─── PLAYER ─────────────────────────────────────────────────────────
+const player = {
+  x: 8, y: FLOOR_Y - 9,
+  frame: 0, shootCooldown: 0,
+  gunFlash: 0
+};
+
+function drawPlayer(legFrame) {
+  const px2 = (x, y, c) => px(player.x + x, player.y + y, c);
+  const skin = '#f5c89a', hair = '#222', jacket = '#2255cc',
+        boot = '#3d2b1f', gun = '#888870', barrel = '#ccccaa';
+
+  // head
+  px2(3,0,hair); px2(4,0,hair); px2(5,0,hair);
+  px2(2,1,skin); px2(3,1,skin); px2(4,1,skin); px2(5,1,skin); px2(6,1,hair);
+  px2(2,2,skin); px2(3,2,skin); px2(4,2,'#111'); px2(5,2,skin); px2(6,2,skin);
+  // body
+  for(let i=2;i<=6;i++) { px2(i,3,jacket); px2(i,4,jacket); }
+  // gun arm
+  px2(7,3,skin); px2(8,3,gun); px2(9,3,gun); px2(10,3,barrel);
+  px2(11,3,barrel); px2(12,3,barrel); px2(13,3,barrel);
+  if(player.gunFlash>0){
+    px2(14,2,'#f5c400'); px2(14,3,'#fff'); px2(14,4,'#f5c400');
+    px2(15,3,'#f5c400');
+  }
+  // legs
+  if(legFrame===0){
+    px2(3,5,jacket); px2(4,5,jacket); px2(5,5,jacket);
+    px2(3,6,boot); px2(5,6,boot); px2(3,7,boot); px2(5,7,boot);
+  } else if(legFrame===1){
+    px2(3,5,jacket); px2(4,5,jacket); px2(5,5,jacket);
+    px2(2,6,boot); px2(4,6,boot); px2(2,7,boot); px2(5,7,boot);
+  } else {
+    px2(3,5,jacket); px2(4,5,jacket); px2(5,5,jacket);
+    px2(3,6,boot); px2(5,6,boot); px2(4,7,boot); px2(6,7,boot);
+  }
+}
+
+// ─── BULLETS ────────────────────────────────────────────────────────
+const bullets = [];
+
+function spawnBullet() {
+  bullets.push({ x: (player.x + 14) * S, y: (player.y + 3) * S + 1 });
+  player.gunFlash = 5;
+}
+
+function updateBullets() {
+  for(let i = bullets.length - 1; i >= 0; i--) {
+    bullets[i].x += 9;
+    if(bullets[i].x > W) bullets.splice(i, 1);
+  }
+}
+
+function drawBullets() {
+  ctx.fillStyle = '#f5c400';
+  for(const b of bullets) {
+    ctx.fillRect(b.x, b.y, 14, 3);
+    ctx.fillStyle = 'rgba(245,196,0,0.3)';
+    ctx.fillRect(b.x - 6, b.y, 6, 3);
+    ctx.fillStyle = '#f5c400';
+  }
+}
+
+// ─── ENEMIES ────────────────────────────────────────────────────────
+const enemies = [];
+
+function spawnEnemy() {
+  const col = W / S - 5 - Math.random() * 25;
+  enemies.push({
+    x: col,
+    y: FLOOR_Y - 8,
+    hp: 3,
+    maxHp: 3,
+    dead: false,
+    deadTimer: 0,
+    frame: 0
+  });
+}
+
+// Spawn initial enemies
+for(let i = 0; i < 4; i++) spawnEnemy();
+
+function drawEnemy(e, legFrame) {
+  if(e.dead) {
+    // Skull
+    const sx = e.x, sy = e.y;
+    px(sx+1,sy+0,'#e8e8d0'); px(sx+2,sy+0,'#e8e8d0'); px(sx+3,sy+0,'#e8e8d0');
+    px(sx+0,sy+1,'#e8e8d0'); px(sx+1,sy+1,'#0a0e1a'); px(sx+2,sy+1,'#e8e8d0');
+    px(sx+3,sy+1,'#0a0e1a'); px(sx+4,sy+1,'#e8e8d0');
+    px(sx+0,sy+2,'#e8e8d0'); px(sx+1,sy+2,'#e8e8d0'); px(sx+2,sy+2,'#e8e8d0');
+    px(sx+3,sy+2,'#e8e8d0'); px(sx+4,sy+2,'#e8e8d0');
+    px(sx+1,sy+3,'#e8e8d0'); px(sx+2,sy+3,'#0a0e1a'); px(sx+3,sy+3,'#e8e8d0');
+    px(sx+1,sy+4,'#e8e8d0'); px(sx+2,sy+4,'#e8e8d0'); px(sx+3,sy+4,'#e8e8d0');
+    return;
+  }
+  const ex = (x,y,c) => px(e.x+x, e.y+y, c);
+  const body='#c0392b', eye='#f5c400', boot='#333';
+  // head
+  ex(1,0,body); ex(2,0,body); ex(3,0,body); ex(4,0,body);
+  ex(0,1,body); ex(1,1,eye);  ex(2,1,body); ex(3,1,eye);  ex(4,1,body); ex(5,1,body);
+  ex(0,2,body); ex(1,2,body); ex(2,2,body); ex(3,2,body); ex(4,2,body); ex(5,2,body);
+  // body
+  for(let i=0;i<=5;i++){ ex(i,3,body); ex(i,4,body); }
+  // legs
+  if(legFrame===0){
+    ex(1,5,boot); ex(3,5,boot); ex(1,6,boot); ex(3,6,boot);
+  } else {
+    ex(0,5,boot); ex(2,5,boot); ex(0,6,boot); ex(4,6,boot);
+  }
+}
+
+function updateEnemies(tick) {
+  for(let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if(e.dead) {
+      e.deadTimer++;
+      if(e.deadTimer > 90) {
+        enemies.splice(i,1);
+        spawnEnemy();
+      }
+      continue;
+    }
+    // Walk left slowly
+    e.x -= 0.3;
+    e.frame++;
+    // Bullet collision
+    for(let j = bullets.length - 1; j >= 0; j--) {
+      const b = bullets[j];
+      const ex = e.x * S, ey = e.y * S;
+      if(b.x + 14 > ex && b.x < ex + 6*S && b.y + 3 > ey && b.y < ey + 8*S) {
+        e.hp--;
+        bullets.splice(j,1);
+        if(e.hp <= 0) { e.dead = true; e.deadTimer = 0; }
+        break;
+      }
+    }
+    // Reset if walked too far left
+    if(e.x < player.x + 20) {
+      e.x = W/S - 5;
+    }
+  }
+}
+
+// ─── COIN PARTICLES ─────────────────────────────────────────────────
+const coins = [];
+
+function spawnCoins(x, y) {
+  for(let i = 0; i < 3; i++) {
+    coins.push({
+      x: x * S, y: y * S,
+      vx: (Math.random()-0.5)*3,
+      vy: -Math.random()*4 - 1,
+      life: 40
+    });
+  }
+}
+
+function updateDrawCoins() {
+  for(let i = coins.length-1; i>=0; i--) {
+    const c = coins[i];
+    c.x += c.vx; c.y += c.vy; c.vy += 0.3;
+    c.life--;
+    const alpha = c.life / 40;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#f5c400';
+    ctx.fillRect(c.x, c.y, S, S);
+    ctx.globalAlpha = 1;
+    if(c.life <= 0) coins.splice(i,1);
+  }
+}
+
+// ─── MAIN LOOP ───────────────────────────────────────────────────────
+let tick = 0;
+let shootTimer = 0;
+
+function loop() {
+  drawBackground();
+
+  scrollX += 1.5;
+
+  const legFrame = Math.floor(tick / 8) % 3;
+  const enemyLeg = Math.floor(tick / 10) % 2;
+
+  // Auto shoot
+  shootTimer++;
+  if(shootTimer >= 25) { spawnBullet(); shootTimer = 0; }
+  if(player.gunFlash > 0) player.gunFlash--;
+
+  updateBullets();
+  updateEnemies(tick);
+
+  // Draw
+  drawPlayer(legFrame);
+  drawBullets();
+
+  for(const e of enemies) {
+    const eLeg = Math.floor(e.frame / 10) % 2;
+    drawEnemy(e, eLeg);
+    if(!e.dead) {
+      // HP bar above enemy
+      const barX = e.x * S;
+      const barY = e.y * S - S*2;
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(barX, barY, 6*S, 3);
+      ctx.fillStyle = '#2ecc71';
+      ctx.fillRect(barX, barY, Math.floor(6*S * (e.hp/e.maxHp)), 3);
+    }
+  }
+
+  updateDrawCoins();
+
+  tick++;
+  requestAnimationFrame(loop);
+}
+
+loop();
+
+// ─── BEST RIELS ─────────────────────────────────────────────────────
+const bestRiels = localStorage.getItem('bestRiels');
+if(bestRiels) document.getElementById('best-riels').textContent = bestRiels + ' KHR';
+</script>
+</body>
+</html>
