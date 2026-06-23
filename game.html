@@ -161,10 +161,74 @@ canvas.addEventListener('mousedown', e => { if (e.button === 0) mouseDown = true
 canvas.addEventListener('mouseup',   e => { if (e.button === 0) mouseDown = false; });
 
 // ═══════════════════════════════════════════════════════════════
-//  PLATFORMS  (chunk 5 will add obstacles / lasers)
+//  LASERS (obstacles)
 // ═══════════════════════════════════════════════════════════════
-// Simple platforms distributed across the level
-const platforms = generatePlatforms();
+const lasers = [];
+const LASER_DAMAGE_PCT = 0.10;     // 10% of max HP per tick
+const LASER_TICK_FRAMES = 30;      // every 0.5s at 60fps
+
+function generateLasers() {
+  lasers.length = 0;
+  // Spawn 2-4 lasers per level on platforms or above ground
+  const laserCount = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < laserCount; i++) {
+    let x, y;
+    // 70% chance on a platform, 30% at ground level
+    if (platforms.length > 0 && Math.random() < 0.7) {
+      const p = platforms[Math.floor(Math.random() * platforms.length)];
+      x = p.x;
+      y = p.y - 12; // slightly above platform
+    } else {
+      x = 600 + Math.random() * (LEVEL_WIDTH - 1200);
+      y = GROUND_Y - 20;
+    }
+    const w = 100 + Math.random() * 150; // variable width
+    lasers.push({ x, y, w, h: 6, lastDamageFrame: -LASER_TICK_FRAMES });
+  }
+}
+
+function updateLasers() {
+  for (const laser of lasers) {
+    if (player.dead) continue;
+    const overlap =
+      player.x < laser.x + laser.w &&
+      player.x + PLAYER_W > laser.x &&
+      player.y < laser.y + laser.h &&
+      player.y + PLAYER_H > laser.y;
+    if (overlap) {
+      // 0.5 contact damage per frame
+      damagePlayer(0.5);
+      // 10% max HP tick every 0.5s
+      if (frameCount - laser.lastDamageFrame >= LASER_TICK_FRAMES) {
+        const dmg = player.maxHp * LASER_DAMAGE_PCT;
+        damagePlayer(dmg);
+        spawnDmgNumber(player.x, player.y - 12, dmg, '#e74c3c');
+        laser.lastDamageFrame = frameCount;
+      }
+    }
+  }
+}
+
+function drawLasers() {
+  for (const laser of lasers) {
+    const sx = wp(laser.x);
+    if (sx > BASE_W + 40 || sx < -40) continue;
+    const pulse = Math.sin(frameCount * 0.1) * 0.3 + 0.7;
+    // Outer glow
+    ctx.fillStyle = `rgba(255,50,50,${pulse * 0.5})`;
+    ctx.fillRect(sx - 2, laser.y - 2, laser.w + 4, laser.h + 4);
+    // Core beam
+    ctx.fillStyle = `rgba(255,80,80,${pulse * 0.9})`;
+    ctx.fillRect(sx, laser.y, laser.w, laser.h);
+    // Bright centre line
+    ctx.fillStyle = `rgba(255,220,220,${pulse})`;
+    ctx.fillRect(sx, laser.y + 2, laser.w, laser.h - 4);
+    // End caps (pixel art style)
+    ctx.fillStyle = '#ff3232';
+    ctx.fillRect(sx - 3, laser.y - 1, 5, laser.h + 2);
+    ctx.fillRect(sx + laser.w - 2, laser.y - 1, 5, laser.h + 2);
+  }
+}
 
 function generatePlatforms() {
   const plats = [];
@@ -177,6 +241,7 @@ function generatePlatforms() {
   }
   return plats;
 }
+const platforms = generatePlatforms();
 
 // ═══════════════════════════════════════════════════════════════
 //  PLAYER PHYSICS + MOVEMENT
@@ -703,19 +768,18 @@ function killNPC(n) {
 
 function checkLevelClear() {
   const allDead = npcs.every(n => n.dead);
-  if (allDead) {
-    // Advance level
-    campaign.level = (campaign.level || 1) + 1;
-    // Persist progress immediately
-    localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+  if (!allDead) return;
+  if (gameState !== 'playing') return;
 
-    if (campaign.level > 100) {
-      // Player has beaten level 100 — victory
-      setTimeout(() => goToVictory(), 800);
-    } else {
-      // Small delay then go to shop for upgrades
-      setTimeout(() => goToShop(), 1200);
-    }
+  if (campaign.level >= 100) {
+    gameState  = 'you_win';
+    stateTimer = 0;
+  } else if (campaign.level % 10 === 0) {
+    gameState  = 'boss_slayed';
+    stateTimer = 0;
+  } else {
+    gameState  = 'level_clear';
+    stateTimer = 0;
   }
 }
 
@@ -757,12 +821,8 @@ function goToShop() {
 }
 
 function goToVictory() {
-  // Save final state and best score, then show simple victory message and return to level select
-  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
-  const best = parseInt(localStorage.getItem('bestRiels') || '0');
-  if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
-  try { alert('CONGRATULATIONS — YOU BEAT RIEL RUNNER!'); } catch (e) {}
-  window.location.href = 'level-select.html';
+  gameState  = 'you_win';
+  stateTimer = 0;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -797,23 +857,45 @@ function drawNPCs() {
     const by = n.y;
 
     if (n.isBoss) {
-      // Boss: larger solid block with different color
-      const bossColor = n.touching ? '#e74c3c' : '#2e86de'; // blue boss
-      ctx.fillStyle = bossColor;
-      ctx.fillRect(sx, by, n.w, n.h);
+      // Boss: draw scaled-up pixel art (2x the NPC pixels)
+      const S = PIXEL * 2; // scale per-pixel for boss
+      const body = n.touching ? '#e74c3c' : '#2e86de'; // blue boss, flash red when touching
+      const eye  = '#ffffff';
+      const boot = '#11131a';
 
-      // Simple eye
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(sx + Math.round(n.w/4), by + Math.round(n.h/4), PIXEL, PIXEL);
-      ctx.fillRect(sx + Math.round(n.w*3/4)-PIXEL, by + Math.round(n.h/4), PIXEL, PIXEL);
+      // Helper: draw a boss pixel at (col,row) in the 6x7 layout scaled by S
+      function bep(col, row, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(sx + col * S, by + row * S, S, S);
+      }
 
-      // HP bar larger
+      // Simple 6x7 boss sprite (based on NPC but larger)
+      // Row 0
+      bep(1,0,body); bep(2,0,body); bep(3,0,body); bep(4,0,body);
+      // Row 1
+      bep(0,1,body); bep(1,1,eye);  bep(2,1,body); bep(3,1,eye);  bep(4,1,body); bep(5,1,body);
+      // Row 2
+      bep(0,2,body); bep(1,2,body); bep(2,2,body); bep(3,2,body); bep(4,2,body); bep(5,2,body);
+      // Row 3-4 body
+      for (let c = 0; c <= 5; c++) { bep(c,3,body); bep(c,4,body); }
+      // Row 5-6 legs (bigger boots)
+      if (n.animFrame === 0) {
+        bep(1,5,boot); bep(3,5,boot); bep(1,6,boot); bep(3,6,boot);
+      } else {
+        bep(0,5,boot); bep(2,5,boot); bep(1,6,boot); bep(4,6,boot);
+      }
+
+      // Draw a simple eye highlight
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(sx + Math.round((2 * S)), by + Math.round(1 * S), Math.max(1, S/2), Math.max(1, S/2));
+
+      // Boss HP bar larger and centered
       if (settings.hpBars) {
         const bw = n.w + 8;
         ctx.fillStyle = '#c0392b';
-        ctx.fillRect(sx - 4, by - 10, bw, 6);
+        ctx.fillRect(sx - 4, by - 12, bw, 6);
         ctx.fillStyle = '#2ecc71';
-        ctx.fillRect(sx - 4, by - 10, Math.max(0, bw * (n.hp / n.maxHp)), 6);
+        ctx.fillRect(sx - 4, by - 12, Math.max(0, bw * (n.hp / n.maxHp)), 6);
       }
 
       continue;
@@ -875,19 +957,29 @@ function killPlayer() {
 }
 
 function respawnPlayer() {
-  player.dead    = false;
-  player.hp      = player.maxHp;
+  player.dead     = false;
+  player.hp       = player.maxHp;
+  player.bullets  = 20;
   // Spawn slightly behind (to the left of) death point
-  player.x       = Math.max(0, player.deathX - 80);
-  player.y       = GROUND_Y - PLAYER_H;
-  player.vx      = 0;
-  player.vy      = 0;
+  player.x        = Math.max(0, player.deathX - 80);
+  player.y        = GROUND_Y - PLAYER_H;
+  player.vx       = 0;
+  player.vy       = 0;
   player.hitFlash = 0;
 }
 
 function handleZoneFail() {
-  // TODO chunk 4 — for now just reload
-  setTimeout(() => { window.location.href = 'level-select.html'; }, 2000);
+  // Find start of current zone (zones are 1-10, 11-20, etc.)
+  const zoneStart = Math.floor((campaign.level - 1) / 10) * 10 + 1;
+  campaign.level = zoneStart;
+  campaign.lives = 3;
+  campaign.hp    = campaign.maxHp;
+  const best = parseInt(localStorage.getItem('bestRiels') || '0');
+  if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
+  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+  // Show game over screen then redirect
+  gameState = 'game_over';
+  stateTimer = 0;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1121,62 +1213,201 @@ function drawMagazines() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  HUD  (chunk 4 will flesh this out — basic skeleton now)
+//  GAME STATE + FRAME COUNTER
+// ═══════════════════════════════════════════════════════════════
+let gameState  = 'playing';
+let stateTimer = 0;
+let frameCount = 0;
+
+// ═══════════════════════════════════════════════════════════════
+//  TOAST NOTIFICATION
+// ═══════════════════════════════════════════════════════════════
+const toastQueue = [];
+let toastTimer2 = 0;
+let toastMsg    = '';
+
+function showToast(msg) {
+  toastMsg    = msg;
+  toastTimer2 = 120;
+}
+
+function drawToast() {
+  if (toastTimer2 <= 0) return;
+  toastTimer2--;
+  const alpha = Math.min(1, toastTimer2 / 20);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle   = '#0f1526';
+  ctx.fillRect(BASE_W / 2 - 140, BASE_H - 40, 280, 22);
+  ctx.fillStyle   = '#f5c400';
+  ctx.font        = '7px "Press Start 2P", monospace';
+  ctx.textAlign   = 'center';
+  ctx.fillText(toastMsg, BASE_W / 2, BASE_H - 24);
+  ctx.textAlign   = 'left';
+  ctx.globalAlpha = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  HUD
 // ═══════════════════════════════════════════════════════════════
 function drawHUD() {
-  // HP bar background
-  ctx.fillStyle = '#0f1526';
-  ctx.fillRect(10, 10, 160, 14);
-  ctx.fillStyle = '#c0392b';
-  ctx.fillRect(10, 10, 160, 14);
-  ctx.fillStyle = '#2ecc71';
-  const hpW = Math.max(0, 160 * (player.hp / player.maxHp));
-  ctx.fillRect(10, 10, hpW, 14);
+  if (gameState !== 'playing') return;
+
+  // HP bar
+  const barX = 10, barY = 10, barW = 180, barH = 14;
+  ctx.fillStyle = '#1a1e30';
+  ctx.fillRect(barX, barY, barW, barH);
+  const hpFrac = Math.max(0, player.hp / player.maxHp);
+  ctx.fillStyle = hpFrac > 0.5 ? '#2ecc71' : hpFrac > 0.25 ? '#f5c400' : '#e74c3c';
+  ctx.fillRect(barX, barY, barW * hpFrac, barH);
   ctx.fillStyle = '#e8e8d0';
   ctx.font = '6px "Press Start 2P", monospace';
-  ctx.fillText('HP ' + Math.ceil(player.hp) + '/' + player.maxHp, 14, 21);
+  ctx.fillText('HP ' + Math.ceil(player.hp) + ' / ' + player.maxHp, barX + 4, barY + 10);
 
-  // Lives
-  ctx.fillStyle = '#c0392b';
-  ctx.font = '10px "Press Start 2P", monospace';
-  for (let i = 0; i < player.lives; i++) {
-    ctx.fillText('♥', 10 + i * 16, 40);
+  // Lives (3 hearts, grey when lost)
+  ctx.font = '11px "Press Start 2P", monospace';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i < player.lives ? '#c0392b' : '#2a2e44';
+    ctx.fillText('♥', barX + i * 18, barY + 30);
   }
 
-  // Level + Riels
-  ctx.fillStyle = '#f5c400';
+  // Bullet count
+  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillStyle = (player.bullets || 0) > 5 ? '#e8e8d0' : '#e74c3c';
+  ctx.fillText('AMMO ' + (player.bullets || 0), barX, barY + 46);
+
+  // Right panel
   ctx.font = '7px "Press Start 2P", monospace';
-  ctx.fillText('LVL ' + campaign.level, BASE_W - 120, 20);
-  ctx.fillStyle = '#e8e8d0';
-  ctx.fillText(campaign.riels + ' KHR', BASE_W - 120, 34);
-
-  // Gun damage
-  ctx.fillStyle = '#888870';
-  ctx.font = '6px "Press Start 2P", monospace';
-  ctx.fillText('DMG ' + player.gunDamage, BASE_W - 120, 46);
-
-  // Bullets remaining
+  ctx.textAlign = 'right';
   ctx.fillStyle = '#f5c400';
-  ctx.font = '6px "Press Start 2P", monospace';
-  ctx.fillText('BUL ' + (player.bullets || 0), BASE_W - 120, 58);
+  ctx.fillText('LVL ' + campaign.level, BASE_W - 10, 18);
+  ctx.fillStyle = '#e8e8d0';
+  ctx.fillText(campaign.riels + ' KHR', BASE_W - 10, 30);
+  ctx.fillStyle = '#888870';
+  ctx.fillText('DMG ' + player.gunDamage, BASE_W - 10, 42);
+  const alive = npcs.filter(n => !n.dead).length;
+  ctx.fillStyle = alive > 0 ? '#e8e8d0' : '#2ecc71';
+  ctx.fillText(alive + ' LEFT', BASE_W - 10, 54);
+  ctx.textAlign = 'left';
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  OVERLAY SCREENS
+// ═══════════════════════════════════════════════════════════════
+function drawOverlay() {
+  if (gameState === 'playing') return;
+  stateTimer++;
+
+  const dimAlpha = Math.min(stateTimer / 30, 0.78);
+  ctx.fillStyle  = `rgba(10,14,26,${dimAlpha})`;
+  ctx.fillRect(0, 0, BASE_W, BASE_H);
+
+  if (stateTimer < 20) return;
+
+  const cx = BASE_W / 2;
+  const cy = BASE_H / 2;
+  ctx.textAlign = 'center';
+
+  if (gameState === 'level_clear') {
+    drawBanner('LEVEL COMPLETE!', '#2ecc71', cx, cy);
+    if (stateTimer > 90) proceedToShop();
+
+  } else if (gameState === 'boss_slayed') {
+    drawBanner('BOSS SLAYED!', '#f5c400', cx, cy);
+    if (stateTimer > 35) {
+      ctx.font      = '7px "Press Start 2P", monospace';
+      ctx.fillStyle = '#2ecc71';
+      ctx.fillText('MAX HP UP! NOW ' + player.maxHp, cx, cy + 50);
+    }
+    if (stateTimer > 120) proceedToShop();
+
+  } else if (gameState === 'game_over') {
+    drawBanner('GAME OVER', '#c0392b', cx, cy);
+    if (stateTimer > 35) {
+      ctx.font      = '7px "Press Start 2P", monospace';
+      ctx.fillStyle = '#888870';
+      ctx.fillText('RETURNING TO ZONE START...', cx, cy + 50);
+    }
+    if (stateTimer > 160) {
+      localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+      window.location.href = 'level-select.html';
+    }
+
+  } else if (gameState === 'you_win') {
+    drawBanner('YOU BEAT THE GAME!', '#f5c400', cx, cy - 20);
+    if (stateTimer > 35) {
+      ctx.font = '7px "Press Start 2P", monospace';
+      ctx.fillStyle = '#e8e8d0';
+      ctx.fillText('CONGRATULATIONS!', cx, cy + 24);
+      ctx.fillStyle = '#888870';
+      ctx.fillText('TOTAL RIELS: ' + campaign.riels + ' KHR', cx, cy + 44);
+    }
+    if (stateTimer > 220) {
+      localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+      window.location.href = 'index.html';
+    }
+  }
+
+  ctx.textAlign = 'left';
+}
+
+function drawBanner(text, color, cx, cy) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(cx - 230, cy - 38, 460, 54);
+  ctx.fillStyle = color;
+  ctx.fillRect(cx - 230, cy - 40, 460, 4);
+  ctx.fillRect(cx - 230, cy + 16, 460, 4);
+  const size = text.length > 14 ? '13px' : '17px';
+  ctx.font      = `${size} "Press Start 2P", monospace`;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillText(text, cx + 3, cy + 3);
+  ctx.fillStyle = color;
+  ctx.fillText(text, cx, cy);
+}
+
+function proceedToShop() {
+  if (gameState === '_transitioning') return;
+  gameState = '_transitioning';
+  campaign.hp        = Math.ceil(player.hp);
+  campaign.maxHp     = player.maxHp;
+  campaign.lives     = player.lives;
+  campaign.gunDamage = player.gunDamage;
+  // NOTE: level increment happens in shop.html when player clicks Continue
+  const best = parseInt(localStorage.getItem('bestRiels') || '0');
+  if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
+  try {
+    const idx = parseInt(localStorage.getItem('activeCampaignIdx'));
+    const all = JSON.parse(localStorage.getItem('rielrunner_campaigns')) || [];
+    if (!isNaN(idx) && all[idx]) {
+      all[idx] = { ...all[idx], ...campaign, lastPlayed: Date.now() };
+      localStorage.setItem('rielrunner_campaigns', JSON.stringify(all));
+    }
+  } catch {}
+  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+  window.location.href = 'shop.html';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT LASERS after platforms exist
+// ═══════════════════════════════════════════════════════════════
+generateLasers();
 
 // ═══════════════════════════════════════════════════════════════
 //  MAIN LOOP
 // ═══════════════════════════════════════════════════════════════
-let lastTime = 0;
-
-function loop(ts) {
+function loop() {
   requestAnimationFrame(loop);
+  frameCount++;
 
-  updatePlayer();
-  updateBullets();
-  updateNPCs();
-  // magazines pickup
-  updateMagazines && updateMagazines();
+  if (gameState === 'playing') {
+    updatePlayer();
+    updateBullets();
+    updateNPCs();
+    updateLasers();
+    updateMagazines && updateMagazines();
+  }
 
-  // Draw
   drawWorld();
+  drawLasers();
   drawBullets();
   drawMagazines();
   drawNPCs();
@@ -1184,6 +1415,8 @@ function loop(ts) {
   updateDrawRielParticles();
   updateDrawDmgNumbers();
   drawHUD();
+  drawToast();
+  drawOverlay();
 }
 
 requestAnimationFrame(loop);
