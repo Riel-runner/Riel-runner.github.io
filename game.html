@@ -99,6 +99,10 @@ const LASER_TICK_INT = 30;           // frames between laser ticks
 const SHOOT_COOLDOWN = 18;           // frames (~0.3s at 60fps)
 const BULLET_SPEED   = 10;
 const PIXEL          = 3;            // sprite pixel scale
+const DASH_DISTANCE  = 400;          // px — half screen dash
+const DASH_COOLDOWN  = 600;          // frames — 10 seconds at 60fps
+const DASH_DURATION  = 10;           // frames the dash lasts
+const GAME_VERSION   = 'V3';
 
 // ═══════════════════════════════════════════════════════════════
 //  WORLD / CAMERA
@@ -134,6 +138,11 @@ const player = {
   respawnTimer: 0,
   // damage flash
   hitFlash: 0,
+  // dash
+  dashCooldown: 0,
+  dashTimer: 0,
+  dashVx: 0,
+  isDashing: false,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -142,8 +151,18 @@ const player = {
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (e.code === 'Space') e.preventDefault();
-  if (e.code === 'ArrowUp') e.preventDefault();
+  if (e.code === 'Space')      e.preventDefault();
+  if (e.code === 'ArrowUp')    e.preventDefault();
+  if (e.code === 'ArrowDown')  e.preventDefault();
+  if (e.code === 'Escape') {
+    e.preventDefault();
+    if (gameState === 'playing') {
+      gameState = 'paused';
+      pauseMenuIndex = 0;
+    } else if (gameState === 'paused') {
+      gameState = 'playing';
+    }
+  }
 });
 window.addEventListener('keyup',  e => { keys[e.code] = false; });
 
@@ -272,6 +291,28 @@ function updatePlayer() {
     player.vy = JUMP_FORCE;
     player.onGround = false;
   }
+
+  // Dash — ArrowDown triggers dash in facing direction
+  if (keys['ArrowDown'] && player.dashCooldown <= 0 && !player.isDashing) {
+    player.isDashing = true;
+    player.dashTimer  = DASH_DURATION;
+    player.dashVx     = player.facingRight ? DASH_DISTANCE / DASH_DURATION : -DASH_DISTANCE / DASH_DURATION;
+    player.dashCooldown = DASH_COOLDOWN;
+    keys['ArrowDown'] = false; // consume key so it doesn't retrigger
+  }
+
+  // Handle active dash
+  if (player.isDashing) {
+    player.dashTimer--;
+    player.vx = player.dashVx;
+    if (player.dashTimer <= 0) {
+      player.isDashing = false;
+      player.vx = 0;
+    }
+  }
+
+  // Dash cooldown tick
+  if (player.dashCooldown > 0) player.dashCooldown--;
 
   // Gravity
   player.vy += GRAVITY;
@@ -508,26 +549,31 @@ function spawnNPCs() {
     return;
   }
 
-  // Spread NPCs evenly across the level, keeping them away from the start
+  // Spread NPCs evenly — roughly 1 tank per 4 normal NPCs
   const zone = (LEVEL_WIDTH - 400) / NPC_COUNT;
   for (let i = 0; i < NPC_COUNT; i++) {
     const wx = 500 + i * zone + Math.random() * (zone * 0.6);
-    npcs.push(makeNPC(wx));
+    const isTank = (i % 4 === 3); // every 4th NPC is a tank
+    npcs.push(makeNPC(wx, false, null, null, isTank));
   }
 
   // Start normal levels with limited bullets
   player.bullets = 20;
 }
 
-function makeNPC(wx, isBoss = false, customHp = null, customDmg = null) {
+function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank = false) {
   const lvlNow = campaign.level || 1;
-  // dynamic per-level NPC HP when not a boss (use +1 HP per level)
   const dynamicNpcHp = 10 + Math.max(0, lvlNow - 1) * 1;
-  const hpBase = isBoss ? (customHp || (BOSS_BASE_HP + (Math.floor(lvlNow / 10) - 1) * BOSS_HP_PER)) : dynamicNpcHp;
-  const dmgBase = isBoss ? (customDmg || (BOSS_BASE_DMG + (Math.floor(lvlNow / 10) - 1) * BOSS_DMG_PER)) : (0.5 * lvlNow);
+  const tankHp       = dynamicNpcHp * 3;  // 3x normal HP
+  const hpBase = isBoss
+    ? (customHp || (BOSS_BASE_HP + (Math.floor(lvlNow / 10) - 1) * BOSS_HP_PER))
+    : isTank ? tankHp : dynamicNpcHp;
+  const dmgBase = isBoss
+    ? (customDmg || (BOSS_BASE_DMG + (Math.floor(lvlNow / 10) - 1) * BOSS_DMG_PER))
+    : (0.5 * lvlNow); // tanks deal same contact damage as normals
 
-  const w = isBoss ? NPC_W * 2 : NPC_W;
-  const h = isBoss ? NPC_H * 2 : NPC_H;
+  const w = isBoss ? NPC_W * 2 : isTank ? Math.round(NPC_W * 1.5) : NPC_W;
+  const h = isBoss ? NPC_H * 2 : isTank ? Math.round(NPC_H * 1.5) : NPC_H;
   const y = GROUND_Y - h;
 
   return {
@@ -538,15 +584,17 @@ function makeNPC(wx, isBoss = false, customHp = null, customDmg = null) {
     hp: hpBase,
     maxHp: hpBase,
     dead: false,
-    deadTimer: 0,          // counts up after death
+    deadTimer: 0,
     animTick: 0,
     animFrame: 0,
-    touching: false,       // is it overlapping player this frame?
+    touching: false,
     jumpCooldown: 0,
     attackCooldown: 0,
     attackCooldownFrames: isBoss ? BOSS_ATTACK_COOLDOWN_FRAMES : NPC_ATTACK_COOLDOWN_FRAMES,
     isBoss: !!isBoss,
+    isTank: !!isTank,
     contactDamage: dmgBase,
+    rielReward: isTank ? 5 : 2,  // tanks worth 5 Riels
     w: w,
     h: h
   };
@@ -630,7 +678,7 @@ function updateNPCs() {
     if (screenX < BASE_W + 40 && screenX > -80) {
       const dir = (player.x + PLAYER_W / 2) < (n.x + n.w / 2) ? -1 : 1;
       const gap = (player.x + PLAYER_W / 2) - (n.x + n.w / 2);
-      const speed = n.isBoss ? MOVE_SPEED : NPC_SPEED;
+      const speed = n.isBoss ? MOVE_SPEED : n.isTank ? NPC_SPEED * 0.45 : NPC_SPEED;
       if (Math.abs(gap) > n.w * 0.6) {
         n.x += dir * speed;
       }
@@ -734,12 +782,11 @@ function updateNPCs() {
 function killNPC(n) {
   n.dead      = true;
   n.deadTimer = 0;
-  campaign.riels += 2;
+  const reward = n.rielReward || 2;
+  campaign.riels += reward;
   spawnRielParticles(n.x, n.y);
-  spawnDmgNumber(n.x, n.y - 14, 0, '#2ecc71'); // show +2 KHR
-  // Override: show riel gain text instead
   if (settings.damageNumbers) {
-    dmgNumbers.push({ x: n.x, y: n.y - 14, amount: '2 KHR', color: '#2ecc71', life: 55, vy: -1.0, isText: true });
+    dmgNumbers.push({ x: n.x, y: n.y - 14, amount: reward + ' KHR', color: '#2ecc71', life: 55, vy: -1.0, isText: true });
   }
 
   // Reward bullets for kills (cap to 20)
@@ -901,6 +948,39 @@ function drawNPCs() {
       continue;
     }
 
+    // ── TANK sprite (dark purple, 1.5x scale) ──
+    if (n.isTank) {
+      const S = Math.round(PIXEL * 1.5);
+      const body = n.touching ? '#e74c3c' : '#6c2eb9';
+      const eye  = '#f5c400';
+      const boot = '#111122';
+      function tp(col, row, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(sx + col * S, by + row * S, S, S);
+      }
+      // Head
+      tp(1,0,body); tp(2,0,body); tp(3,0,body); tp(4,0,body);
+      tp(0,1,body); tp(1,1,eye);  tp(2,1,body); tp(3,1,eye);  tp(4,1,body); tp(5,1,body);
+      tp(0,2,body); tp(1,2,body); tp(2,2,body); tp(3,2,body); tp(4,2,body); tp(5,2,body);
+      // Body (extra thick — 3 rows instead of 2)
+      for(let c=0;c<=5;c++){ tp(c,3,body); tp(c,4,body); tp(c,5,body); }
+      // Legs
+      if (n.animFrame === 0) {
+        tp(1,6,boot); tp(3,6,boot); tp(1,7,boot); tp(3,7,boot);
+      } else {
+        tp(0,6,boot); tp(2,6,boot); tp(1,7,boot); tp(4,7,boot);
+      }
+      // HP bar
+      if (settings.hpBars) {
+        const bw = n.w + 4;
+        ctx.fillStyle = '#c0392b';
+        ctx.fillRect(sx - 2, by - 7, bw, 4);
+        ctx.fillStyle = '#9b59b6';
+        ctx.fillRect(sx - 2, by - 7, Math.max(0, bw * (n.hp / n.maxHp)), 4);
+      }
+      continue;
+    }
+
     // Flash red briefly when hit (hitFlash stored on npc)
     const S  = PIXEL;
 
@@ -957,15 +1037,17 @@ function killPlayer() {
 }
 
 function respawnPlayer() {
-  player.dead     = false;
-  player.hp       = player.maxHp;
-  player.bullets  = 20;
-  // Spawn slightly behind (to the left of) death point
-  player.x        = Math.max(0, player.deathX - 80);
-  player.y        = GROUND_Y - PLAYER_H;
-  player.vx       = 0;
-  player.vy       = 0;
-  player.hitFlash = 0;
+  player.dead         = false;
+  player.hp           = player.maxHp;
+  player.bullets      = 20;
+  player.isDashing    = false;
+  player.dashTimer    = 0;
+  player.dashCooldown = 0; // reset cooldown on respawn as a small mercy
+  player.x            = Math.max(0, player.deathX - 80);
+  player.y            = GROUND_Y - PLAYER_H;
+  player.vx           = 0;
+  player.vy           = 0;
+  player.hitFlash     = 0;
 }
 
 function handleZoneFail() {
@@ -1052,6 +1134,17 @@ function drawPlayer() {
     // Skull at death position
     drawSkull(player.deathX, player.y);
     return;
+  }
+
+  // Dash trail — ghost images behind player
+  if (player.isDashing) {
+    for (let t = 1; t <= 3; t++) {
+      const trailX = player.x - player.dashVx * t * 2;
+      ctx.globalAlpha = 0.15 * (4 - t);
+      ctx.fillStyle = '#2255cc';
+      ctx.fillRect(wp(trailX), player.y, PLAYER_W, PLAYER_H);
+    }
+    ctx.globalAlpha = 1;
   }
 
   // Hit flash — alternate transparency
@@ -1215,9 +1308,121 @@ function drawMagazines() {
 // ═══════════════════════════════════════════════════════════════
 //  GAME STATE + FRAME COUNTER
 // ═══════════════════════════════════════════════════════════════
-let gameState  = 'playing';
-let stateTimer = 0;
-let frameCount = 0;
+let gameState      = 'playing';
+let stateTimer     = 0;
+let frameCount     = 0;
+let pauseMenuIndex = 0;  // 0=resume, 1=settings, 2=quit
+
+const PAUSE_ITEMS = [
+  { label: 'RESUME',        action: () => { gameState = 'playing'; } },
+  { label: 'SETTINGS',      action: () => { window.location.href = 'settings.html'; } },
+  { label: 'QUIT TO MENU',  action: () => {
+    campaign.hp = Math.ceil(player.hp);
+    campaign.maxHp = player.maxHp;
+    campaign.lives = player.lives;
+    campaign.gunDamage = player.gunDamage;
+    localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+    window.location.href = 'index.html';
+  }},
+];
+
+// Navigate pause menu with arrow keys, confirm with Space/Enter
+window.addEventListener('keydown', e => {
+  if (gameState !== 'paused') return;
+  if (e.code === 'ArrowUp')   { pauseMenuIndex = (pauseMenuIndex - 1 + PAUSE_ITEMS.length) % PAUSE_ITEMS.length; e.preventDefault(); }
+  if (e.code === 'ArrowDown') { pauseMenuIndex = (pauseMenuIndex + 1) % PAUSE_ITEMS.length; e.preventDefault(); }
+  if (e.code === 'Enter' || e.code === 'Space') { PAUSE_ITEMS[pauseMenuIndex].action(); e.preventDefault(); }
+});
+
+function drawPauseMenu() {
+  if (gameState !== 'paused') return;
+
+  // Dim backdrop
+  ctx.fillStyle = 'rgba(10,14,26,0.82)';
+  ctx.fillRect(0, 0, BASE_W, BASE_H);
+
+  const cx = BASE_W / 2;
+  const panelW = 380, panelH = 320;
+  const panelX = cx - panelW / 2;
+  const panelY = BASE_H / 2 - panelH / 2;
+
+  // Panel background
+  ctx.fillStyle = '#0f1526';
+  ctx.fillRect(panelX, panelY, panelW, panelH);
+
+  // Gold pixel border
+  ctx.fillStyle = '#f5c400';
+  ctx.fillRect(panelX, panelY, panelW, 3);
+  ctx.fillRect(panelX, panelY + panelH - 3, panelW, 3);
+  ctx.fillRect(panelX, panelY, 3, panelH);
+  ctx.fillRect(panelX + panelW - 3, panelY, 3, panelH);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font = '14px "Press Start 2P", monospace';
+  ctx.fillStyle = '#f5c400';
+  ctx.fillText('PAUSED', cx, panelY + 30);
+
+  // Version badge
+  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.fillStyle = '#444460';
+  ctx.fillText(GAME_VERSION, cx, panelY + 46);
+
+  // Divider
+  ctx.fillStyle = 'rgba(245,196,0,0.2)';
+  ctx.fillRect(panelX + 20, panelY + 54, panelW - 40, 2);
+
+  // Stats block
+  ctx.textAlign = 'left';
+  ctx.font = '6px "Press Start 2P", monospace';
+  const stats = [
+    ['CAMPAIGN',  campaign.name || 'UNKNOWN'],
+    ['LEVEL',     campaign.level + ' / 100'],
+    ['HP',        Math.ceil(player.hp) + ' / ' + player.maxHp],
+    ['LIVES',     '♥'.repeat(player.lives) + '♡'.repeat(Math.max(0, 3 - player.lives))],
+    ['RIELS',     campaign.riels + ' KHR'],
+    ['GUN DMG',   player.gunDamage],
+    ['UPGRADES',  campaign.upgradeCount || 0],
+    ['BOSSES',    (campaign.bossesBeaten || 0) + ' / 10'],
+  ];
+  const colL = panelX + 24;
+  const colR = panelX + panelW / 2 + 10;
+  stats.forEach((s, i) => {
+    const row = Math.floor(i / 2);
+    const col = i % 2 === 0 ? colL : colR;
+    const y   = panelY + 74 + row * 20;
+    ctx.fillStyle = '#555566';
+    ctx.fillText(s[0], col, y);
+    ctx.fillStyle = '#e8e8d0';
+    ctx.fillText(s[1], col, y + 11);
+  });
+
+  // Divider
+  ctx.fillStyle = 'rgba(245,196,0,0.2)';
+  ctx.fillRect(panelX + 20, panelY + 162, panelW - 40, 2);
+
+  // Menu items
+  PAUSE_ITEMS.forEach((item, i) => {
+    const itemY = panelY + 188 + i * 38;
+    const selected = i === pauseMenuIndex;
+
+    if (selected) {
+      ctx.fillStyle = '#f5c400';
+      ctx.fillRect(panelX + 16, itemY - 14, panelW - 32, 24);
+    }
+
+    ctx.textAlign = 'center';
+    ctx.font = '9px "Press Start 2P", monospace';
+    ctx.fillStyle = selected ? '#0a0e1a' : '#888870';
+    ctx.fillText((selected ? '▶ ' : '  ') + item.label, cx, itemY);
+  });
+
+  // Hint
+  ctx.font = '5px "Press Start 2P", monospace';
+  ctx.fillStyle = '#333344';
+  ctx.fillText('↑↓ NAVIGATE   SPACE/ENTER CONFIRM   ESC RESUME', cx, panelY + panelH - 10);
+  ctx.textAlign = 'left';
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  TOAST NOTIFICATION
@@ -1274,6 +1479,17 @@ function drawHUD() {
   ctx.font = '6px "Press Start 2P", monospace';
   ctx.fillStyle = (player.bullets || 0) > 5 ? '#e8e8d0' : '#e74c3c';
   ctx.fillText('AMMO ' + (player.bullets || 0), barX, barY + 46);
+
+  // Dash cooldown indicator
+  const dashReady = player.dashCooldown <= 0;
+  ctx.fillStyle = '#1a1e30';
+  ctx.fillRect(barX, barY + 52, 80, 6);
+  ctx.fillStyle = dashReady ? '#2ecc71' : '#2255cc';
+  const dashFrac = dashReady ? 1 : 1 - (player.dashCooldown / DASH_COOLDOWN);
+  ctx.fillRect(barX, barY + 52, 80 * dashFrac, 6);
+  ctx.font = '5px "Press Start 2P", monospace';
+  ctx.fillStyle = dashReady ? '#2ecc71' : '#888870';
+  ctx.fillText(dashReady ? 'DASH RDY' : 'DASH ' + Math.ceil(player.dashCooldown / 60) + 'S', barX, barY + 68);
 
   // Right panel
   ctx.font = '7px "Press Start 2P", monospace';
@@ -1417,6 +1633,7 @@ function loop() {
   drawHUD();
   drawToast();
   drawOverlay();
+  drawPauseMenu();
 }
 
 requestAnimationFrame(loop);
