@@ -146,6 +146,14 @@ const player = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+//  GAME STATE + FRAME COUNTER (declared early — used by input handlers)
+// ═══════════════════════════════════════════════════════════════
+let gameState      = 'playing';
+let stateTimer     = 0;
+let frameCount     = 0;
+let pauseMenuIndex = 0;
+
+// ═══════════════════════════════════════════════════════════════
 //  INPUT
 // ═══════════════════════════════════════════════════════════════
 const keys = {};
@@ -853,25 +861,6 @@ function updateMagazines() {
   }
 }
 
-function goToShop() {
-  // Sync campaign state
-  campaign.hp      = Math.ceil(player.hp);
-  campaign.maxHp   = player.maxHp;
-  campaign.lives   = player.lives;
-  campaign.gunDamage  = player.gunDamage;
-  // upgradeCost already tracked in campaign
-  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
-  // Sync best riels
-  const best = parseInt(localStorage.getItem('bestRiels') || '0');
-  if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
-  window.location.href = 'shop.html';
-}
-
-function goToVictory() {
-  gameState  = 'you_win';
-  stateTimer = 0;
-}
-
 // ═══════════════════════════════════════════════════════════════
 //  PLAYER DAMAGE
 // ═══════════════════════════════════════════════════════════════
@@ -1306,12 +1295,8 @@ function drawMagazines() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  GAME STATE + FRAME COUNTER
+//  PAUSE MENU ITEMS
 // ═══════════════════════════════════════════════════════════════
-let gameState      = 'playing';
-let stateTimer     = 0;
-let frameCount     = 0;
-let pauseMenuIndex = 0;  // 0=resume, 1=settings, 2=quit
 
 const PAUSE_ITEMS = [
   { label: 'RESUME',        action: () => { gameState = 'playing'; } },
