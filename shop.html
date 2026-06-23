@@ -461,7 +461,7 @@
     <div class="item-info">
       <div class="item-name">GUN DAMAGE UP</div>
       <div class="item-desc">
-        INCREASES YOUR GUN'S DAMAGE BY +3.<br>
+        INCREASES YOUR GUN'S DAMAGE BY +2.<br>
         EACH UPGRADE COSTS MORE THAN THE LAST.
       </div>
       <div class="dmg-preview">
@@ -491,7 +491,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<div class="version">v0.1.0 RIEL RUNNER</div>
+<div class="version">v2.0 RIEL RUNNER</div>
 
 <script>
 // ─── LOAD CAMPAIGN ───────────────────────────────────────────────────
@@ -577,7 +577,7 @@ function render() {
   const canAfford = campaign.riels >= cost;
 
   document.getElementById('dmg-current').textContent = campaign.gunDamage + ' DMG';
-  document.getElementById('dmg-next').textContent = (campaign.gunDamage + 3) + ' DMG';
+  document.getElementById('dmg-next').textContent = (campaign.gunDamage + 2) + ' DMG';
   document.getElementById('cost-display').textContent = cost;
 
   const btn = document.getElementById('btn-buy');
@@ -607,7 +607,7 @@ function buyUpgrade() {
   }
 
   campaign.riels       -= campaign.upgradeCost;
-  campaign.gunDamage   += 3; // reduced upgrade power
+  campaign.gunDamage   += 2;
   campaign.upgradeCount++;
   campaign.upgradeCost += 2; // base level increment (boss increments handled in game.html)
 
@@ -618,7 +618,7 @@ function buyUpgrade() {
 
   saveCampaign();
   render();
-  showToast('+3 DAMAGE! GUN NOW ' + campaign.gunDamage + ' DMG');
+  showToast('+2 DAMAGE! GUN NOW ' + campaign.gunDamage + ' DMG');
 }
 
 // ─── SAVE & CONTINUE ─────────────────────────────────────────────────
@@ -643,9 +643,21 @@ function saveCampaign() {
 }
 
 function continueToGame() {
-  // Level already advanced by game.html on clear; preserve it here
-  campaign.lives = 3; // lives reset each zone handled in game.html, here just persist
-  saveCampaign();
+  // Advance to next level
+  campaign.level++;
+  campaign.lives = 3;
+  // Write to localStorage BEFORE redirect so game.html reads the correct level
+  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+  const idx = parseInt(localStorage.getItem('activeCampaignIdx'));
+  if (!isNaN(idx)) {
+    try {
+      const all = JSON.parse(localStorage.getItem('rielrunner_campaigns')) || [];
+      if (all[idx]) {
+        all[idx] = { ...all[idx], ...campaign, lastPlayed: Date.now() };
+        localStorage.setItem('rielrunner_campaigns', JSON.stringify(all));
+      }
+    } catch {}
+  }
   window.location.href = 'game.html';
 }
 
