@@ -372,6 +372,26 @@
       </div>
     </div>
 
+    <!-- Touch Controls -->
+    <div class="setting-row">
+      <div class="setting-info">
+        <div class="setting-name">TOUCH CONTROLS</div>
+        <div class="setting-desc">
+          SHOW ON-SCREEN BUTTONS FOR TOUCHSCREEN.<br>
+          AUTO-AIM IS FORCED ON WHEN ENABLED.<br>
+          TURN ON FOR TABLETS AND PHONES.
+        </div>
+      </div>
+      <div class="toggle-wrap">
+        <label class="toggle">
+          <input type="checkbox" id="toggle-touch" />
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+        <div class="toggle-state" id="touch-state">OFF</div>
+      </div>
+    </div>
+
   </div>
 
   <!-- CONTROLS REFERENCE -->
@@ -411,9 +431,19 @@
         </div>
       </div>
       <div class="controls-row">
+        <div class="controls-action">DASH</div>
+        <div class="keys-display">
+          <span class="key-badge">&#9660; DOWN</span>
+          <span class="keys-label">OR</span>
+          <span class="key-badge">DASH BTN</span>
+        </div>
+      </div>
+      <div class="controls-row">
         <div class="controls-action">PAUSE</div>
         <div class="keys-display">
           <span class="key-badge">ESC</span>
+          <span class="keys-label">OR</span>
+          <span class="key-badge">II BTN</span>
         </div>
       </div>
     </div>
@@ -437,16 +467,16 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<div class="version">v3.0 RIEL RUNNER</div>
+<div class="version">v4.0 RIEL RUNNER</div>
 
 <script>
-// ─── SETTINGS KEYS ───────────────────────────────────────────────────
 const SETTINGS_KEY = 'rielrunner_settings';
 
 const DEFAULTS = {
   autoAim: true,
   hpBars: true,
-  damageNumbers: true
+  damageNumbers: true,
+  touchControls: false
 };
 
 function loadSettings() {
@@ -459,10 +489,9 @@ function saveSettings(s) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 }
 
-// ─── TOGGLE HELPER ───────────────────────────────────────────────────
 function bindToggle(checkboxId, stateId, settingKey) {
   const checkbox = document.getElementById(checkboxId);
-  const stateEl = document.getElementById(stateId);
+  const stateEl  = document.getElementById(stateId);
 
   function update(val) {
     checkbox.checked = val;
@@ -482,17 +511,17 @@ function bindToggle(checkboxId, stateId, settingKey) {
   });
 }
 
-// ─── BIND ALL TOGGLES ────────────────────────────────────────────────
 bindToggle('toggle-autoaim',  'autoaim-state',  'autoAim');
 bindToggle('toggle-hpbars',   'hpbars-state',   'hpBars');
 bindToggle('toggle-damnums',  'damnums-state',  'damageNumbers');
+bindToggle('toggle-touch',    'touch-state',    'touchControls');
 
 // ─── RESET ───────────────────────────────────────────────────────────
 let resetStep = 0;
 let resetTimer;
 
 document.getElementById('reset-btn').addEventListener('click', () => {
-  if(resetStep === 0) {
+  if (resetStep === 0) {
     resetStep = 1;
     document.getElementById('reset-btn').textContent = 'SURE?';
     clearTimeout(resetTimer);
@@ -505,10 +534,10 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     saveSettings({ ...DEFAULTS });
     resetStep = 0;
     document.getElementById('reset-btn').textContent = 'RESET';
-    // Re-apply defaults to toggles
     bindToggle('toggle-autoaim',  'autoaim-state',  'autoAim');
     bindToggle('toggle-hpbars',   'hpbars-state',   'hpBars');
     bindToggle('toggle-damnums',  'damnums-state',  'damageNumbers');
+    bindToggle('toggle-touch',    'touch-state',    'touchControls');
     showToast('ALL DATA CLEARED');
   }
 });
