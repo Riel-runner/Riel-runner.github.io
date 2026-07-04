@@ -205,7 +205,7 @@ const PIXEL          = 3;            // sprite pixel scale
 const DASH_DISTANCE  = 400;          // px — half screen dash
 const DASH_COOLDOWN  = 600;          // frames — 10 seconds at 60fps
 const DASH_DURATION  = 10;           // frames the dash lasts
-const GAME_VERSION   = 'V4';
+const GAME_VERSION   = 'V5';
 
 // ═══════════════════════════════════════════════════════════════
 //  WORLD / CAMERA
@@ -386,11 +386,11 @@ function updatePlayer() {
   // Horizontal
   let moving = false;
   if (keys['ArrowLeft']) {
-    player.vx = -MOVE_SPEED;
+    player.vx = -MOVE_SPEED * (player.speedMult || 1);
     player.facingRight = false;
     moving = true;
   } else if (keys['ArrowRight']) {
-    player.vx = MOVE_SPEED;
+    player.vx = MOVE_SPEED * (player.speedMult || 1);
     player.facingRight = true;
     moving = true;
   } else {
@@ -399,7 +399,7 @@ function updatePlayer() {
 
   // Jump — ArrowUp only, Space is shoot
   if (keys['ArrowUp'] && player.onGround) {
-    player.vy = JUMP_FORCE;
+    player.vy = JUMP_FORCE * (player.jumpMult || 1);
     player.onGround = false;
   }
 
@@ -482,6 +482,16 @@ function updatePlayer() {
   // Camera: keep player centred-ish
   camX = player.x - BASE_W * 0.35;
   camX = Math.max(0, Math.min(LEVEL_WIDTH - BASE_W, camX));
+
+  // Power timers tick
+  if (player.jumpPowerTimer > 0) {
+    player.jumpPowerTimer--;
+    if (player.jumpPowerTimer <= 0) player.jumpMult = 1;
+  }
+  if (player.speedPowerTimer > 0) {
+    player.speedPowerTimer--;
+    if (player.speedPowerTimer <= 0) player.speedMult = 1;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -490,6 +500,20 @@ function updatePlayer() {
 const bullets = [];
 // Magazines (spawned on boss levels) — give player +5 bullets when picked up
 const magazines = [];
+
+// Powerups: jump double-height and speed boost
+const powerups = []; // each: {x,y,w,h,type:'jump'|'speed',collected:false}
+const JUMP_POWER_MULT = 2;
+const JUMP_POWER_DURATION_FRAMES = 30 * 60; // 30s
+const SPEED_POWER_MULT = 3;
+const SPEED_POWER_DURATION_FRAMES = 15 * 60; // 15s
+
+// Player power timers
+player.jumpMult = 1;
+player.jumpPowerTimer = 0; // frames
+player.speedMult = 1;
+player.speedPowerTimer = 0; // frames
+
 
 function firePlayerBullet() {
   // Don't allow firing if out of bullets
@@ -964,6 +988,33 @@ function updateMagazines() {
   }
 }
 
+// Handle powerup pickups
+function updatePowerups() {
+  if (!powerups || powerups.length === 0) return;
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const p = powerups[i];
+    if (p.collected) continue;
+    if (
+      player.x < p.x + p.w &&
+      player.x + PLAYER_W > p.x &&
+      player.y < p.y + p.h &&
+      player.y + PLAYER_H > p.y
+    ) {
+      p.collected = true;
+      if (p.type === 'jump') {
+        player.jumpMult = JUMP_POWER_MULT;
+        player.jumpPowerTimer = JUMP_POWER_DURATION_FRAMES;
+        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'JUMP x2', color: '#8e44ad', life: 60, vy: -1.2, isText: true });
+      } else {
+        player.speedMult = SPEED_POWER_MULT;
+        player.speedPowerTimer = SPEED_POWER_DURATION_FRAMES;
+        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'SPD x3', color: '#27ae60', life: 60, vy: -1.2, isText: true });
+      }
+      playPickupSound && playPickupSound();
+    }
+  }
+}
+
 function goToShop() {
   // Sync campaign state
   campaign.hp      = Math.ceil(player.hp);
@@ -1416,6 +1467,31 @@ function drawMagazines() {
   }
 }
 
+function drawPowerups() {
+  for (const p of powerups) {
+    if (p.collected) continue;
+    const sx = wp(p.x);
+    if (sx < -40 || sx > BASE_W + 40) continue;
+    if (p.type === 'jump') {
+      ctx.fillStyle = '#8e44ad'; // purple
+      ctx.fillRect(sx, p.y, p.w, p.h);
+      ctx.fillStyle = '#f5c400';
+      ctx.fillRect(sx + 2, p.y + 2, p.w - 4, p.h - 4);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '6px "Press Start 2P", monospace';
+      ctx.fillText('J', sx + 3, p.y + 8);
+    } else {
+      ctx.fillStyle = '#27ae60'; // green
+      ctx.fillRect(sx, p.y, p.w, p.h);
+      ctx.fillStyle = '#f5c400';
+      ctx.fillRect(sx + 2, p.y + 2, p.w - 4, p.h - 4);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '6px "Press Start 2P", monospace';
+      ctx.fillText('S', sx + 3, p.y + 8);
+    }
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  PAUSE MENU ITEMS
 // ═══════════════════════════════════════════════════════════════
@@ -1587,6 +1663,19 @@ function drawHUD() {
   ctx.fillStyle = (player.bullets || 0) > 5 ? '#e8e8d0' : '#e74c3c';
   ctx.fillText('AMMO ' + (player.bullets || 0), barX, barY + 46);
 
+  // Powerup indicators
+  ctx.font = '6px "Press Start 2P", monospace';
+  if (player.jumpPowerTimer > 0) {
+    const secs = Math.ceil(player.jumpPowerTimer / 60);
+    ctx.fillStyle = '#f5c400';
+    ctx.fillText('JUMP x' + (player.jumpMult || 1) + ' ' + secs + 's', barX, barY + 60);
+  }
+  if (player.speedPowerTimer > 0) {
+    const secs = Math.ceil(player.speedPowerTimer / 60);
+    ctx.fillStyle = '#f5c400';
+    ctx.fillText('SPD x' + (player.speedMult || 1) + ' ' + secs + 's', barX + 86, barY + 60);
+  }
+
   // Dash cooldown indicator
   const dashReady = player.dashCooldown <= 0;
   ctx.fillStyle = '#1a1e30';
@@ -1716,13 +1805,20 @@ function proceedToShop() {
 //  TOUCH CONTROLS
 // ═══════════════════════════════════════════════════════════════
 (function initTouch() {
+  // Read saved setting (if any). If the user explicitly set touchControls to true/false,
+  // respect that. Otherwise enable on touch-capable devices only.
   const s = (() => {
-    try { return Object.assign({ touchControls: false }, JSON.parse(localStorage.getItem('rielrunner_settings'))); }
-    catch { return { touchControls: false }; }
+    try { return JSON.parse(localStorage.getItem('rielrunner_settings')) || {}; }
+    catch { return {}; }
   })();
 
   const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-  const touchEnabled  = s.touchControls || isTouchDevice;
+  let touchEnabled;
+  if (Object.prototype.hasOwnProperty.call(s, 'touchControls')) {
+    touchEnabled = !!s.touchControls; // respect explicit user preference
+  } else {
+    touchEnabled = isTouchDevice;     // default: enable on touch devices
+  }
   if (!touchEnabled) return;
 
   // Force auto-aim on touch
@@ -1814,6 +1910,29 @@ function proceedToShop() {
 })();
 
 generateLasers();
+// Generate powerups for this level
+function generatePowerups() {
+  powerups.length = 0;
+  // spawn 1-3 powerups per level (avoid boss levels)
+  if (campaign.level > 0 && campaign.level % 10 === 0) return; // no powerups during boss levels
+  const count = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < count; i++) {
+    let x, y;
+    if (platforms.length > 0 && Math.random() < 0.7) {
+      const p = platforms[Math.floor(Math.random() * platforms.length)];
+      x = p.x + 8 + Math.random() * Math.max(0, p.w - 24);
+      y = p.y - 10;
+    } else {
+      x = 400 + Math.random() * (LEVEL_WIDTH - 800);
+      y = GROUND_Y - 16;
+    }
+    const type = Math.random() < 0.5 ? 'jump' : 'speed';
+    powerups.push({ x, y, w: 12, h: 10, type, collected: false });
+  }
+}
+
+// call now
+generatePowerups();
 
 // ═══════════════════════════════════════════════════════════════
 //  MAIN LOOP
@@ -1828,12 +1947,14 @@ function loop() {
     updateNPCs();
     updateLasers();
     updateMagazines && updateMagazines();
+    updatePowerups && updatePowerups();
   }
 
   drawWorld();
   drawLasers();
   drawBullets();
   drawMagazines();
+  drawPowerups();
   drawNPCs();
   drawPlayer();
   updateDrawRielParticles();
