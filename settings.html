@@ -306,7 +306,7 @@
 <body>
 
 <div class="page">
-  <a class="back-btn" href="index.html">&#9664; BACK</a>
+  <a class="back-btn" href="index.html" id="backButton">&#9664; BACK</a>
 
   <div class="page-title">SETTINGS</div>
   <div class="page-sub">CUSTOMISE YOUR EXPERIENCE</div>
@@ -471,6 +471,12 @@
 
 <script>
 const SETTINGS_KEY = 'rielrunner_settings';
+
+// Return to the page that opened Settings. Only allow known in-game destinations.
+const returnTo = new URLSearchParams(window.location.search).get('returnTo');
+if (returnTo === 'game.html') {
+  document.getElementById('backButton').href = 'game.html?resumePaused=1';
+}
 
 const DEFAULTS = {
   autoAim: true,
