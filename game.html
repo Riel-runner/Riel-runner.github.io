@@ -251,7 +251,7 @@ const player = {
 // ═══════════════════════════════════════════════════════════════
 //  GAME STATE + FRAME COUNTER (declared early — used by input handlers)
 // ═══════════════════════════════════════════════════════════════
-let gameState      = 'playing';
+let gameState      = new URLSearchParams(window.location.search).get('resumePaused') === '1' ? 'paused' : 'playing';
 let stateTimer     = 0;
 let frameCount     = 0;
 let pauseMenuIndex = 0;
@@ -1498,7 +1498,7 @@ function drawPowerups() {
 
 const PAUSE_ITEMS = [
   { label: 'RESUME',        action: () => { gameState = 'playing'; } },
-  { label: 'SETTINGS',      action: () => { window.location.href = 'settings.html'; } },
+  { label: 'SETTINGS',      action: () => { window.location.href = 'settings.html?returnTo=game.html'; } },
   { label: 'QUIT TO MENU',  action: () => {
     campaign.hp = Math.ceil(player.hp);
     campaign.maxHp = player.maxHp;
