@@ -472,6 +472,16 @@
 <script>
 const SETTINGS_KEY = 'rielrunner_settings';
 
+// Settings toggle sound effect
+const toggleSound = new Audio('assets/audio/sfx/toggle.ogg');
+toggleSound.preload = 'auto';
+
+function playToggleSound() {
+  const sound = toggleSound.cloneNode();
+  sound.volume = 0.5;
+  sound.play().catch(() => {});
+}
+
 // Return to the page that opened Settings. Only allow known in-game destinations.
 const returnTo = new URLSearchParams(window.location.search).get('returnTo');
 if (returnTo === 'game.html') {
@@ -513,6 +523,7 @@ function bindToggle(checkboxId, stateId, settingKey) {
     s[settingKey] = checkbox.checked;
     saveSettings(s);
     update(checkbox.checked);
+    playToggleSound();
     showToast('SAVED');
   });
 }
@@ -538,6 +549,7 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   } else {
     localStorage.clear();
     saveSettings({ ...DEFAULTS });
+    playToggleSound();
     resetStep = 0;
     document.getElementById('reset-btn').textContent = 'RESET';
     bindToggle('toggle-autoaim',  'autoaim-state',  'autoAim');
