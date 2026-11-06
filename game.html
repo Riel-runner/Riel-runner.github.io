@@ -1227,30 +1227,15 @@ function handleZoneFail() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  SOUND (chunk 2 — basic gunshot using Web Audio)
+//  SOUND
 // ═══════════════════════════════════════════════════════════════
-let audioCtx;
-function getAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  return audioCtx;
-}
+const shootSound = new Audio('assets/audio/sfx/shoot.ogg');
 
 function playGunshot() {
-  try {
-    const ac  = getAudio();
-    const buf = ac.createBuffer(1, ac.sampleRate * 0.08, ac.sampleRate);
-    const d   = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) {
-      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
-    }
-    const src  = ac.createBufferSource();
-    const gain = ac.createGain();
-    src.buffer = buf;
-    gain.gain.setValueAtTime(0.18, ac.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.08);
-    src.connect(gain); gain.connect(ac.destination);
-    src.start();
-  } catch {}
+  // Clone the audio so rapid shots can overlap without cutting each other off.
+  const shot = shootSound.cloneNode();
+  shot.volume = 0.55;
+  shot.play().catch(() => {});
 }
 
 function playDeathSound() {
