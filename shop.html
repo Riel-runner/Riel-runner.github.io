@@ -677,6 +677,15 @@ function showToast(msg) {
 // ─── INIT ────────────────────────────────────────────────────────────
 render();
 </script>
+  <script>
+    // Shop music starts from the beginning whenever the shop page opens and loops.
+    const shopMusic = new Audio('assets/audio/music/shop-music.flac');
+    shopMusic.loop = true;
+    shopMusic.volume = 0.50; // Upgrade and click sound effects are set slightly louder.
+    shopMusic.play().catch(() => {});
+    window.addEventListener('pointerdown', () => shopMusic.play().catch(() => {}), { once: true });
+    window.addEventListener('keydown', () => shopMusic.play().catch(() => {}), { once: true });
+  </script>
   <script src="click-sounds.js"></script>
 </body>
 </html>
