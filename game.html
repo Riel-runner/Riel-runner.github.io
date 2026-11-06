@@ -1952,6 +1952,15 @@ function loop() {
 
 requestAnimationFrame(loop);
 </script>
+  <script>
+    // Game music starts from the beginning on every level and loops continuously.
+    const gameMusic = new Audio('assets/audio/music/game-music.flac');
+    gameMusic.loop = true;
+    gameMusic.volume = 0.50; // Sound effects use 0.55, so they sit slightly above the music.
+    gameMusic.play().catch(() => {});
+    window.addEventListener('pointerdown', () => gameMusic.play().catch(() => {}), { once: true });
+    window.addEventListener('keydown', () => gameMusic.play().catch(() => {}), { once: true });
+  </script>
   <script src="click-sounds.js"></script>
 </body>
 </html>
