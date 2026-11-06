@@ -601,6 +601,9 @@ function render() {
 
 // ─── BUY UPGRADE ─────────────────────────────────────────────────────
 function buyUpgrade() {
+  const upgradeSound = new Audio('assets/audio/sfx/upgrade.ogg');
+  upgradeSound.volume = 0.55;
+  upgradeSound.play().catch(() => {});
   if(campaign.riels < campaign.upgradeCost) {
     showToast('NOT ENOUGH RIELS!');
     return;
