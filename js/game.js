@@ -426,7 +426,7 @@ function updatePlayer() {
 const bullets = [];
 
 // Ammo: infinite magazines. Reload takes 3 seconds, less with the Reload Speed upgrade.
-const MAG_SIZE      = 20;
+const MAG_SIZE      = window.RielUpgrades.effect(campaign, 'ammo'); // 20, +5 per Mag Size upgrade level
 const RELOAD_FRAMES = window.RielUpgrades.effect(campaign, 'reload'); // frames (180 = 3s at 60fps)
 const droppedMags   = [];     // empty magazines falling out during reload (visual only)
 

@@ -8,6 +8,7 @@ window.RielUpgrades = (function () {
   // Base game values the upgrades modify (keep in sync with game.js).
   const BASE_SHOOT_COOLDOWN = 18;      // frames between shots
   const BASE_RELOAD_FRAMES  = 3 * 60;  // 3 seconds
+  const BASE_MAG_SIZE       = 20;      // bullets per magazine
 
   const pct = n => Math.round(n * 100) + '%';
 
@@ -35,6 +36,10 @@ window.RielUpgrades = (function () {
       desc: 'SHOOT 5% FASTER.',
       value: lvl => Math.round(BASE_SHOOT_COOLDOWN * (1 - 0.05 * lvl)), // frames between shots
       format: v => (60 / v).toFixed(1) + ' SHOTS/S' },
+    { key: 'ammo',     name: 'MAG SIZE',     baseCost: 6,
+      desc: 'HOLD 5 MORE BULLETS PER MAGAZINE.',
+      value: lvl => BASE_MAG_SIZE + 5 * lvl,           // bullets per magazine (20 -> 70)
+      format: v => v + ' ROUNDS' },
     { key: 'reload',   name: 'RELOAD SPEED', baseCost: 6,
       desc: 'RELOAD 7% FASTER.',
       value: lvl => Math.round(BASE_RELOAD_FRAMES * (1 - 0.07 * lvl)),  // reload time in frames
