@@ -210,3 +210,5 @@ body {
   .btn-group    { gap: 8px; }
   .btn          { padding: 9px 0; }
 }
+
+.stat-row .gem-count { color: #5dade2; }

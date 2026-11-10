@@ -4,12 +4,6 @@ try {
   campaign = JSON.parse(localStorage.getItem('activeCampaign'));
 } catch { campaign = null; }
 
-// Opened from the title screen's SHOP button (shop.html?from=menu) rather than after
-// clearing a level: no "level complete", no advancing to the next level, just shop
-// for the current campaign and go back to the title.
-const FROM_MENU = new URLSearchParams(window.location.search).get('from') === 'menu';
-// Buying is only possible for a real, still-alive campaign.
-const SHOP_OPEN = !!campaign && !campaign.dead;
 
 if (!campaign) {
   // Fallback defaults if somehow landed here directly
@@ -106,7 +100,7 @@ function render() {
     const lvl   = UPG.level(campaign, u.key);
     const maxed = lvl >= UPG.MAX_LEVEL;
     const cost  = UPG.cost(u.key, lvl);
-    const canAfford = SHOP_OPEN && !maxed && campaign.riels >= cost;
+    const canAfford = !maxed && campaign.riels >= cost;
 
     card.className = 'upg-card ' + (maxed ? 'maxed' : canAfford ? 'affordable' : 'cant-afford');
     card.querySelector('.upg-level').textContent = maxed ? 'MAX LEVEL' : 'LV ' + lvl + ' / ' + UPG.MAX_LEVEL;
@@ -127,7 +121,6 @@ function render() {
 
 // ─── BUY UPGRADE ─────────────────────────────────────────────────────
 function buyUpgrade(key) {
-  if (!SHOP_OPEN) { showToast('START OR LOAD A CAMPAIGN FIRST!'); return; }
   const u = UPG.BY_KEY[key];
   const lvl = UPG.level(campaign, key);
   if (lvl >= UPG.MAX_LEVEL) { showToast(u.name + ' IS MAXED!'); return; }
@@ -178,7 +171,6 @@ function saveCampaign() {
 }
 
 function continueToGame() {
-  if (FROM_MENU) { window.location.href = 'index.html'; return; } // never skip a level from the menu
   // Advance to next level
   campaign.level++;
   // Start every level at full HP. Lives are NOT reset here: they only refill
@@ -212,21 +204,6 @@ function showToast(msg) {
 // ─── INIT ────────────────────────────────────────────────────────────
 render();
 
-// Title-screen mode: say whose shop this is and swap CONTINUE for BACK TO TITLE.
-if (FROM_MENU) {
-  const badge = document.querySelector('.level-badge');
-  const note  = document.querySelector('.skip-note');
-  const btn   = document.querySelector('.btn-continue');
-  if (SHOP_OPEN) {
-    badge.textContent = (campaign.name || 'CAMPAIGN') + ' · LEVEL ' + campaign.level;
-    note.textContent  = 'UPGRADES APPLY TO YOUR CURRENT CAMPAIGN';
-  } else {
-    badge.textContent = 'NO ACTIVE CAMPAIGN';
-    note.textContent  = 'START OR LOAD A CAMPAIGN TO BUY UPGRADES';
-    note.classList.add('shop-closed-note');
-  }
-  btn.innerHTML = '&#9664; BACK TO TITLE';
-}
 
 // Shop music starts from the beginning whenever the shop page opens and loops.
 const shopMusic = new Audio('assets/audio/music/shop-music.flac');

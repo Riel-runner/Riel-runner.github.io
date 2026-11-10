@@ -47,6 +47,12 @@ const ARMOR_BLOCK       = window.RielUpgrades.effect(campaign, 'armor');    // f
 const PLAYER_SPEED_MULT = window.RielUpgrades.effect(campaign, 'speed');    // move speed multiplier
 const PLAYER_SHOOT_CD   = window.RielUpgrades.effect(campaign, 'firerate'); // frames between shots
 
+// Cosmetics bought with gems in the shop (js/cosmetics.js): look only, no gameplay effect.
+const PLAYER_SKIN = window.RielCosmetics.equipped('player');
+const WEAPON_SKIN = window.RielCosmetics.equipped('weapon');
+const TRAIL_ID    = window.RielCosmetics.equipped('trail').id;
+const trailParticles = [];
+
 // Run stats shown on the death screen / campaign details. Older saves won't
 // have these yet, so they start counting from 0 the first time they're used.
 function addStat(name, amount = 1) {
@@ -1455,7 +1461,18 @@ function updatePowerups() {
 // (every 10th) also restores lives to the max of 3. Otherwise lost lives stay lost.
 const MAX_LIVES = 3;
 function isBossLevel() { return campaign.level % 10 === 0; }
+// Gems for clearing this level, added to the profile shared by every campaign.
+// Recorded on the campaign so a level can never pay out twice (e.g. after a resume).
+function awardLevelGems() {
+  if (campaign.gemsForLevel === campaign.level) return 0;
+  campaign.gemsForLevel = campaign.level;
+  const n = window.RielCosmetics.levelReward(campaign.level);
+  window.RielCosmetics.addGems(n);
+  return n;
+}
+
 function applyLevelClearRewards() {
+  awardLevelGems();
   campaign.levelState = null; // level finished: nothing to resume (null, not delete, so saves overwrite it)
   campaign.maxHp = player.maxHp;
   campaign.hp    = player.maxHp;
@@ -1814,6 +1831,15 @@ function drawPlayer() {
     return;
   }
 
+  // Cosmetic trail (shop): particles left behind while moving
+  if (gameState === 'playing') {
+    if (Math.abs(player.vx) > 0.2 || !player.onGround) {
+      window.RielCosmetics.spawnTrail(trailParticles, TRAIL_ID, player.x, player.y, PLAYER_W, PLAYER_H, frameCount);
+    }
+    window.RielCosmetics.updateTrail(trailParticles);
+  }
+  window.RielCosmetics.drawTrail(trailParticles, ctx, wp);
+
   // Dash trail — ghost images behind player
   if (player.isDashing) {
     for (let t = 1; t <= 3; t++) {
@@ -1842,21 +1868,23 @@ function drawPlayer() {
     ctx.fillRect(wp(bx) + drawCol * S, by + row * S, S, S);
   }
 
-  const skin    = '#f5c89a';
-  const hair    = '#222222';
-  const jacket  = '#2255cc';
-  const boot    = '#3d2b1f';
-  const gunC    = '#888870';
-  const barrel  = '#ccccaa';
-  const flash   = '#f5c400';
+  // Colours come from the equipped player skin and weapon skin.
+  const skin    = PLAYER_SKIN.skin;
+  const hair    = PLAYER_SKIN.hair;
+  const jacket  = PLAYER_SKIN.jacket;
+  const belt    = PLAYER_SKIN.belt || PLAYER_SKIN.jacket;
+  const boot    = PLAYER_SKIN.boot;
+  const eye     = PLAYER_SKIN.eye;
+  const gunC    = WEAPON_SKIN.gun;
+  const flash   = WEAPON_SKIN.bullet;
 
   // Head
   p(2,0,hair); p(3,0,hair); p(4,0,hair);
   p(1,1,skin); p(2,1,skin); p(3,1,skin); p(4,1,skin); p(5,1,hair);
-  p(1,2,skin); p(2,2,skin); p(3,2,'#111'); p(4,2,skin); p(5,2,skin);
+  p(1,2,skin); p(2,2,skin); p(3,2,eye); p(4,2,skin); p(5,2,skin);
 
   // Body
-  for(let c=1;c<=5;c++){ p(c,3,jacket); p(c,4,jacket); }
+  for(let c=1;c<=5;c++){ p(c,3,jacket); p(c,4,belt); }
 
   // Gun arm (always on right side of body = col 6+)
   if (player.reloadTimer > 0) {
@@ -1987,10 +2015,10 @@ function drawBullets() {
   for (const b of bullets) {
     const sx = wp(b.x);
     // Trail
-    ctx.fillStyle = 'rgba(245,196,0,0.3)';
+    ctx.fillStyle = WEAPON_SKIN.glow;
     ctx.fillRect(sx - b.dx * 8, b.y - b.dy * 8, 8, 3);
     // Bullet
-    ctx.fillStyle = '#f5c400';
+    ctx.fillStyle = WEAPON_SKIN.bullet;
     ctx.fillRect(sx, b.y, 10, 3);
   }
 }
@@ -2342,6 +2370,8 @@ function drawOverlay() {
       ctx.font      = '7px "Public Pixel", monospace';
       ctx.fillStyle = '#2ecc71';
       ctx.fillText('HP RESTORED', cx, cy + 50);
+      ctx.fillStyle = '#5dade2';
+      ctx.fillText('+' + window.RielCosmetics.levelReward(campaign.level) + ' ' + window.RielCosmetics.CURRENCY, cx, cy + 66);
     }
     if (stateTimer > 90) proceedToShop();
 
@@ -2355,6 +2385,8 @@ function drawOverlay() {
     if (stateTimer > 60) {
       ctx.fillStyle = '#e74c3c';
       ctx.fillText('LIVES RESTORED  ' + '♥'.repeat(MAX_LIVES) + '  HP RESTORED', cx, cy + 66);
+      ctx.fillStyle = '#5dade2';
+      ctx.fillText('+' + window.RielCosmetics.levelReward(campaign.level) + ' ' + window.RielCosmetics.CURRENCY, cx, cy + 82);
     }
     if (stateTimer > 120) proceedToShop();
 
@@ -2371,6 +2403,7 @@ function drawOverlay() {
       ctx.fillStyle = '#888870';
       ctx.fillText('TOTAL RIELS: ' + campaign.riels + ' KHR', cx, cy + 44);
     }
+    if (stateTimer === 21) awardLevelGems();
     if (stateTimer > 220) {
       campaign.levelState = null;
       persistCampaign();

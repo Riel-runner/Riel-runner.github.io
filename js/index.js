@@ -290,6 +290,9 @@ loop();
 const bestRiels = localStorage.getItem('bestRiels');
 if(bestRiels) document.getElementById('best-riels').textContent = bestRiels + ' KHR';
 
+// Gems for the cosmetics shop (shared by all campaigns, see js/cosmetics.js)
+document.getElementById('gem-count').textContent = window.RielCosmetics.gems().toLocaleString('en-US');
+
 // Intro video: play once per session (when the game is first opened) and remove
 // when finished. No skip. Coming back to the main menu goes straight to the title.
 (function(){

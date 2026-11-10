@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riel Runner — Shop</title>
+<link rel="preload" href="assets/fonts/PublicPixel.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/store.css">
+<script src="js/volume.js"></script>
+</head>
+<body>
+
+<div class="purchase-flash" id="purchase-flash"></div>
+
+<div class="page">
+  <a class="back-btn" href="index.html">&#9664; BACK</a>
+
+  <div class="page-title">SHOP</div>
+  <div class="page-sub">NEW LOOKS FOR YOUR RUNNER</div>
+  <div class="divider"></div>
+
+  <!-- Gem balance (shared by every campaign) -->
+  <div class="gem-bar">
+    <div class="gem-left">
+      <svg class="gem-icon" viewBox="0 0 8 8" aria-hidden="true" shape-rendering="crispEdges">
+        <rect x="2" y="0" width="4" height="1" fill="#5dade2"/><rect x="1" y="1" width="6" height="1" fill="#5dade2"/>
+        <rect x="0" y="2" width="8" height="2" fill="#2e86de"/><rect x="1" y="4" width="6" height="1" fill="#2e86de"/>
+        <rect x="2" y="5" width="4" height="1" fill="#21618c"/><rect x="3" y="6" width="2" height="1" fill="#21618c"/>
+        <rect x="2" y="1" width="2" height="1" fill="#d6eaf8"/>
+      </svg>
+      <div>
+        <div class="gem-label">YOUR GEMS</div>
+        <div class="gem-note">+10 PER LEVEL CLEARED &middot; +50 PER BOSS &middot; ANY CAMPAIGN</div>
+      </div>
+    </div>
+    <div class="gem-amount" id="gem-count">0</div>
+  </div>
+
+  <!-- Categories -->
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-cat="weapon">WEAPON SKINS</button>
+    <button class="tab" role="tab" data-cat="player">PLAYER SKINS</button>
+    <button class="tab" role="tab" data-cat="trail">TRAILS</button>
+  </div>
+
+  <div class="store-grid" id="store-grid"></div>
+  <div class="store-foot">LOOKS ONLY &middot; NO EFFECT ON GAMEPLAY</div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="version">V6 RIEL RUNNER</div>
+
+<script src="js/cosmetics.js"></script>
+<script src="js/store.js"></script>
+  <script src="js/click-sounds.js"></script>
+</body>
+</html>

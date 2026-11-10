@@ -6,7 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const [repo, browser] = process.argv.slice(2);
-const pages = ['index', 'game', 'level-select', 'shop', 'settings', 'credits'];
+const pages = ['index', 'game', 'level-select', 'shop', 'store', 'settings', 'credits'];
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 const missing = [];
 
