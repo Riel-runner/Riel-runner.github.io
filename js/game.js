@@ -2572,6 +2572,12 @@ function restoreLevelState() {
   npcs.length = 0;      npcs.push(...s.npcs.map(n => ({ ...n, nextDodgeRoll: 0 })));
   Object.assign(player, s.player);
   player.vx = 0;
+  // Upgrades bought in the shop (from the title screen) since this save win over
+  // the saved values; a Max HP upgrade also adds that HP now.
+  const hpGain = (campaign.maxHp || 0) - (s.player.maxHp || 0);
+  player.maxHp = Math.max(player.maxHp, campaign.maxHp || 0);
+  player.gunDamage = Math.max(player.gunDamage, campaign.gunDamage || 0);
+  if (hpGain > 0) player.hp = Math.min(player.maxHp, player.hp + hpGain);
   camX = s.camX || 0;
   gameState = 'paused';
   pauseMenuIndex = 0;

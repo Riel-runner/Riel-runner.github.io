@@ -22,6 +22,7 @@ To run one suite: `node tests/<name>-test.js . "<path to chrome.exe>"` from the 
 | `touch` | Touch controls toggle; on-screen buttons and pause work with mouse and touch |
 | `lives` | HP refills every level; lives refill only after boss levels |
 | `shop` | Upgrades, prices, level-10 cap, effects in game, old-save migration |
+| `menushop` | Title-screen SHOP button; shop opened from the menu (no level skip, closed without a campaign) |
 | `ai` | Enemy AI: help calls, backup, flanking, tank cover, retreat, dodging, bosses |
 | `soak` | Full levels run 2000 frames with no crashes or stuck enemies |
 | `jump` | Jump heights, power-up boosts, every platform reachable |

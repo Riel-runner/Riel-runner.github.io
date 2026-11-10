@@ -10,7 +10,7 @@ const f = document.getElementById('f'), log = [];
 const ok = (c, m) => log.push((c ? 'PASS ' : 'FAIL ') + m);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 6000) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch {} await wait(50); } return false; }
-async function go(url) { const tag = url + '?t=' + Math.random(); const snap = Object.assign({}, localStorage); f.src = 'about:blank'; await wait(150); localStorage.clear(); for (const k in snap) localStorage.setItem(k, snap[k]); f.src = tag;
+async function go(url) { const tag = url + (url.includes('?') ? '&' : '?') + 't=' + Math.random(); const snap = Object.assign({}, localStorage); f.src = 'about:blank'; await wait(150); localStorage.clear(); for (const k in snap) localStorage.setItem(k, snap[k]); f.src = tag;
   await until(() => f.contentDocument.URL.endsWith(tag) && f.contentDocument.readyState !== 'loading'); await wait(300); }
 function ptr(el, type, x, y, pointerType = 'mouse') {
   const r = el.getBoundingClientRect();

@@ -480,3 +480,6 @@ body::after {
 .upg-cost[hidden] { display: none; }
 .upg-cost .cost-amount { font-size: 13px; }
 .upg-card.maxed .upg-foot { justify-content: flex-end; }
+
+/* Shop opened from the title screen with no usable campaign */
+.skip-note.shop-closed-note { color: #c0392b; }
