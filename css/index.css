@@ -162,9 +162,9 @@ body {
 
 /* Pixel-art icon that inherits the button text color (so it turns gold on hover too). */
 .btn-icon {
-  width: 1.1em;
-  height: 1.25em;
-  vertical-align: -0.2em;
+  width: 1.6em;                /* same square size for every menu icon */
+  height: 1.6em;
+  vertical-align: -0.4em;
 }
 
 .blink { animation: blink 1s step-end infinite; }
