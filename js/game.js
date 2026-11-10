@@ -178,30 +178,53 @@ const lasers = [];
 const LASER_DAMAGE_PCT = 0.10;     // 10% of max HP per tick
 const LASER_TICK_FRAMES = 30;      // every 0.5s at 60fps
 
+// Lasers are placed on purpose (not randomly) and are always avoidable:
+//  - GROUND lasers: short, low beams spread evenly through the level. Jump over them
+//    (a normal jump clears ~120px) or wait for them to switch off.
+//  - PLATFORM lasers: cover only one end of a platform, so part of it is always safe.
+// Each laser is ON for 5s then OFF for 3s, flickering for the last 0.75s before it comes
+// back on. Neighbouring lasers are out of step, so there's always a gap to time.
+const LASER_ON_FRAMES   = 5 * 60;
+const LASER_OFF_FRAMES  = 3 * 60;
+const LASER_CYCLE       = LASER_ON_FRAMES + LASER_OFF_FRAMES;
+const LASER_WARN_FRAMES = 45;
+const GROUND_LASER_W    = 56;
+
 function generateLasers() {
   lasers.length = 0;
-  // Spawn 2-4 lasers per level on platforms or above ground
-  const laserCount = 2 + Math.floor(Math.random() * 3);
-  for (let i = 0; i < laserCount; i++) {
-    let x, y, w;
-    // 70% chance on a platform, 30% at ground level
-    if (platforms.length > 0 && Math.random() < 0.7) {
-      const p = platforms[Math.floor(Math.random() * platforms.length)];
-      x = p.x;
-      y = p.y - 12; // slightly above platform
-      w = 100 + Math.random() * 150; // variable width
+  const level = campaign.level || 1;
+  const count = Math.min(5, 2 + Math.floor(level / 20));       // 2 early on, up to 5 in later stages
+  const usable = platforms.filter(p => p.x > 500 && p.x + p.w < LEVEL_WIDTH - 300);
+  const used = new Set();
+  for (let i = 0; i < count; i++) {
+    const targetX = 650 + (i + 0.5) * (LEVEL_WIDTH - 1000) / count; // evenly spaced, clear of the start
+    const t = Math.floor(i * LASER_CYCLE / count);                   // stagger the on/off timing
+    const base = { h: 6, t, lastDamageFrame: -LASER_TICK_FRAMES };
+    const plat = i % 2 === 1 && usable.filter(p => !used.has(p))
+      .sort((a, b) => Math.abs(a.x - targetX) - Math.abs(b.x - targetX))[0];
+    if (plat) {
+      used.add(plat);
+      const w = Math.round(plat.w * 0.4);
+      const x = i % 4 === 1 ? plat.x : plat.x + plat.w - w;          // left or right end only
+      lasers.push({ ...base, kind: 'platform', x, y: plat.y - 12, w });
     } else {
-      x = 600 + Math.random() * (LEVEL_WIDTH - 1200);
-      y = GROUND_Y - 20;
-      w = 50 + Math.random() * 45;   // ground lasers stay narrow enough to jump over
+      let x = Math.round(targetX - GROUND_LASER_W / 2);
+      // Keep ground lasers out from under platforms so the jump over them is clean.
+      const over = platforms.find(p => x + GROUND_LASER_W > p.x - 12 && x < p.x + p.w + 12);
+      if (over) x = Math.round(over.x + over.w + 24);
+      lasers.push({ ...base, kind: 'ground', x: Math.min(x, LEVEL_WIDTH - 350), y: GROUND_Y - 20, w: GROUND_LASER_W });
     }
-    lasers.push({ x, y, w, h: 6, lastDamageFrame: -LASER_TICK_FRAMES });
   }
 }
 
+const laserPhase = l => (l.t || 0) % LASER_CYCLE;
+const laserOn    = l => laserPhase(l) < LASER_ON_FRAMES;
+const laserWarn  = l => !laserOn(l) && LASER_CYCLE - laserPhase(l) <= LASER_WARN_FRAMES;
+
 function updateLasers() {
   for (const laser of lasers) {
-    if (player.dead) continue;
+    laser.t = (laser.t || 0) + 1;  // only advances while playing (paused = frozen)
+    if (player.dead || !laserOn(laser)) continue;
     const overlap =
       player.x < laser.x + laser.w &&
       player.x + PLAYER_W > laser.x &&
@@ -223,19 +246,30 @@ function updateLasers() {
 function drawLasers() {
   for (const laser of lasers) {
     const sx = wp(laser.x);
-    if (sx > BASE_W + 40 || sx < -40) continue;
-    const pulse = Math.sin(frameCount * 0.1) * 0.3 + 0.7;
-    // Outer glow
-    ctx.fillStyle = `rgba(255,50,50,${pulse * 0.5})`;
-    ctx.fillRect(sx - 2, laser.y - 2, laser.w + 4, laser.h + 4);
-    // Core beam
-    ctx.fillStyle = `rgba(255,80,80,${pulse * 0.9})`;
-    ctx.fillRect(sx, laser.y, laser.w, laser.h);
-    // Bright centre line
-    ctx.fillStyle = `rgba(255,220,220,${pulse})`;
-    ctx.fillRect(sx, laser.y + 2, laser.w, laser.h - 4);
-    // End caps (pixel art style)
-    ctx.fillStyle = '#ff3232';
+    if (sx > BASE_W + 40 || sx + laser.w < -40) continue;
+    const on = laserOn(laser);
+    if (on) {
+      const pulse = Math.sin(frameCount * 0.1) * 0.3 + 0.7;
+      // Outer glow
+      ctx.fillStyle = `rgba(255,50,50,${pulse * 0.5})`;
+      ctx.fillRect(sx - 2, laser.y - 2, laser.w + 4, laser.h + 4);
+      // Core beam
+      ctx.fillStyle = `rgba(255,80,80,${pulse * 0.9})`;
+      ctx.fillRect(sx, laser.y, laser.w, laser.h);
+      // Bright centre line
+      ctx.fillStyle = `rgba(255,220,220,${pulse})`;
+      ctx.fillRect(sx, laser.y + 2, laser.w, laser.h - 4);
+    } else if (laserWarn(laser) && frameCount % 8 < 4) {
+      // About to switch back on: thin flickering warning beam
+      ctx.fillStyle = 'rgba(255,80,80,0.45)';
+      ctx.fillRect(sx, laser.y + 2, laser.w, laser.h - 4);
+    } else {
+      // Off: faint dotted guide so you can see where it will be
+      ctx.fillStyle = 'rgba(255,80,80,0.18)';
+      for (let x = 0; x < laser.w; x += 6) ctx.fillRect(sx + x, laser.y + 2, 3, 2);
+    }
+    // Emitters (pixel art end caps): bright when on, dim when off
+    ctx.fillStyle = on ? '#ff3232' : '#5a2020';
     ctx.fillRect(sx - 3, laser.y - 1, 5, laser.h + 2);
     ctx.fillRect(sx + laser.w - 2, laser.y - 1, 5, laser.h + 2);
   }
@@ -1684,16 +1718,6 @@ function drawWorld() {
   ctx.fillStyle = 'rgba(245,196,0,0.07)';
   const tOff = (-camX) % 32;
   for (let x = tOff % 32; x < BASE_W; x += 32) ctx.fillRect(x, GROUND_Y + 6, 16, FLOOR_H - 6);
-
-  // Level end marker (right side of corridor)
-  const endX = wp(LEVEL_WIDTH - 30);
-  if (endX < BASE_W && endX > -30) {
-    ctx.fillStyle = '#2ecc71';
-    ctx.fillRect(endX, 0, 6, GROUND_Y);
-    ctx.fillStyle = '#fff';
-    ctx.font = '7px monospace';
-    ctx.fillText('END', endX - 10, GROUND_Y - 10);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2280,7 +2304,7 @@ function restoreLevelState() {
   if (!s || s.level !== campaign.level || !Array.isArray(s.npcs) || !s.player) return false;
   platforms.length = 0; platforms.push(...s.platforms);
   // Frame-based timers restart from 0 on a fresh page, so reset them.
-  lasers.length = 0;    lasers.push(...s.lasers.map(l => ({ ...l, lastDamageFrame: -LASER_TICK_FRAMES })));
+  lasers.length = 0;    lasers.push(...s.lasers.map(l => ({ kind: 'ground', ...l, t: l.t || 0, lastDamageFrame: -LASER_TICK_FRAMES })));
   powerups.length = 0;  powerups.push(...s.powerups);
   npcs.length = 0;      npcs.push(...s.npcs.map(n => ({ ...n, nextDodgeRoll: 0 })));
   Object.assign(player, s.player);
