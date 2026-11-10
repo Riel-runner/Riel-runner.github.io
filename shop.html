@@ -411,6 +411,7 @@
     z-index: 5;
   }
 </style>
+<script src="volume.js"></script>
 </head>
 <body>
 
@@ -602,7 +603,7 @@ function render() {
 // ─── BUY UPGRADE ─────────────────────────────────────────────────────
 function buyUpgrade() {
   const upgradeSound = new Audio('assets/audio/sfx/upgrade.ogg');
-  upgradeSound.volume = 0.55;
+  upgradeSound.volume = 0.55 * window.RielVolume.sfx();
   upgradeSound.play().catch(() => {});
   if(campaign.riels < campaign.upgradeCost) {
     showToast('NOT ENOUGH RIELS!');
@@ -681,7 +682,7 @@ render();
     // Shop music starts from the beginning whenever the shop page opens and loops.
     const shopMusic = new Audio('assets/audio/music/shop-music.flac');
     shopMusic.loop = true;
-    shopMusic.volume = 0.50; // Upgrade and click sound effects are set slightly louder.
+    window.RielVolume.bindMusic(shopMusic, 0.50); // Upgrade and click sound effects are set slightly louder.
     shopMusic.play().catch(() => {});
     window.addEventListener('pointerdown', () => shopMusic.play().catch(() => {}), { once: true });
     window.addEventListener('keydown', () => shopMusic.play().catch(() => {}), { once: true });

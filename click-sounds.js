@@ -24,7 +24,7 @@
   function playClickThenRun(control, originalEvent) {
     const sound = new Audio(CLICK_SOUND);
     sound.preload = "auto";
-    sound.volume = 0.45;
+    sound.volume = 0.45 * window.RielVolume.sfx();
 
     let finished = false;
 
@@ -95,7 +95,7 @@
   if (pauseButton) {
     pauseButton.addEventListener("touchstart", () => {
       const sound = new Audio(CLICK_SOUND);
-      sound.volume = 0.45;
+      sound.volume = 0.45 * window.RielVolume.sfx();
       sound.play().catch(() => {});
     }, { passive: true });
   }

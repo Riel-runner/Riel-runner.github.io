@@ -16,7 +16,7 @@
   const audio = new Audio(MUSIC_PATH);
   audio.loop = true;
   audio.preload = "auto";
-  audio.volume = 0.35;
+  window.RielVolume.bindMusic(audio, 0.35);
 
   let restored = false;
 

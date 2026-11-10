@@ -301,7 +301,62 @@
     transition: background 0.1s;
   }
   .btn-danger:hover { background: #c0392b; color: #fff; }
+
+  /* Volume slider */
+  .volume-wrap {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 160px;
+  }
+
+  .volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 10px;
+    background: #1e2440;
+    border: 2px solid #2a2e55;
+    outline: none;
+    cursor: pointer;
+  }
+  .volume-slider:focus-visible { border-color: #f5c400; }
+
+  .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 18px;
+    background: #f5c400;
+    border: 2px solid #b8920a;
+    border-radius: 0;
+    cursor: pointer;
+  }
+  .volume-slider::-moz-range-thumb {
+    width: 14px;
+    height: 18px;
+    background: #f5c400;
+    border: 2px solid #b8920a;
+    border-radius: 0;
+    cursor: pointer;
+  }
+  .volume-slider::-moz-range-progress { background: #f5c400; height: 6px; }
+
+  .volume-value {
+    font-size: 6px;
+    letter-spacing: 0.1em;
+    color: #f5c400;
+  }
+  .volume-value.muted { color: #444460; }
+
+  @media (max-width: 480px) {
+    .setting-row.volume-row { flex-direction: column; align-items: stretch; }
+    .volume-wrap { width: 100%; }
+  }
 </style>
+<script src="volume.js"></script>
 </head>
 <body>
 
@@ -311,6 +366,33 @@
   <div class="page-title">SETTINGS</div>
   <div class="page-sub">CUSTOMISE YOUR EXPERIENCE</div>
   <div class="divider"></div>
+
+  <!-- AUDIO -->
+  <div class="section">
+    <div class="section-label">&#9632; AUDIO</div>
+
+    <div class="setting-row volume-row">
+      <div class="setting-info">
+        <div class="setting-name">MUSIC VOLUME</div>
+        <div class="setting-desc">MENU, LEVEL AND SHOP MUSIC.</div>
+      </div>
+      <div class="volume-wrap">
+        <input type="range" class="volume-slider" id="slider-music" min="0" max="100" step="5" aria-label="Music volume" />
+        <div class="volume-value" id="music-value">100%</div>
+      </div>
+    </div>
+
+    <div class="setting-row volume-row">
+      <div class="setting-info">
+        <div class="setting-name">SFX VOLUME</div>
+        <div class="setting-desc">SHOOTING, CLICKS AND UPGRADE SOUNDS.</div>
+      </div>
+      <div class="volume-wrap">
+        <input type="range" class="volume-slider" id="slider-sfx" min="0" max="100" step="5" aria-label="Sound effects volume" />
+        <div class="volume-value" id="sfx-value">100%</div>
+      </div>
+    </div>
+  </div>
 
   <!-- GAMEPLAY -->
   <div class="section">
@@ -402,18 +484,24 @@
         <div class="controls-action">MOVE LEFT</div>
         <div class="keys-display">
           <span class="key-badge">&#9664; LEFT</span>
+          <span class="keys-label">OR</span>
+          <span class="key-badge">A</span>
         </div>
       </div>
       <div class="controls-row">
         <div class="controls-action">MOVE RIGHT</div>
         <div class="keys-display">
           <span class="key-badge">RIGHT &#9654;</span>
+          <span class="keys-label">OR</span>
+          <span class="key-badge">D</span>
         </div>
       </div>
       <div class="controls-row">
         <div class="controls-action">JUMP</div>
         <div class="keys-display">
           <span class="key-badge">&#9650; UP</span>
+          <span class="keys-label">OR</span>
+          <span class="key-badge">W</span>
         </div>
       </div>
       <div class="controls-row">
@@ -422,6 +510,14 @@
           <span class="key-badge">SPACE</span>
           <span class="keys-label">OR</span>
           <span class="key-badge">LEFT CLICK</span>
+        </div>
+      </div>
+      <div class="controls-row">
+        <div class="controls-action">RELOAD</div>
+        <div class="keys-display">
+          <span class="key-badge">R</span>
+          <span class="keys-label">OR</span>
+          <span class="key-badge">AUTO WHEN EMPTY</span>
         </div>
       </div>
       <div class="controls-row">
@@ -434,6 +530,8 @@
         <div class="controls-action">DASH</div>
         <div class="keys-display">
           <span class="key-badge">&#9660; DOWN</span>
+          <span class="keys-label">OR</span>
+          <span class="key-badge">S</span>
           <span class="keys-label">OR</span>
           <span class="key-badge">DASH BTN</span>
         </div>
@@ -478,7 +576,7 @@ toggleSound.preload = 'auto';
 
 function playToggleSound() {
   const sound = toggleSound.cloneNode();
-  sound.volume = 0.5;
+  sound.volume = 0.5 * window.RielVolume.sfx();
   sound.play().catch(() => {});
 }
 
@@ -492,7 +590,9 @@ const DEFAULTS = {
   autoAim: true,
   hpBars: true,
   damageNumbers: true,
-  touchControls: false
+  touchControls: false,
+  musicVolume: 100,
+  sfxVolume: 100
 };
 
 function loadSettings() {
@@ -533,6 +633,40 @@ bindToggle('toggle-hpbars',   'hpbars-state',   'hpBars');
 bindToggle('toggle-damnums',  'damnums-state',  'damageNumbers');
 bindToggle('toggle-touch',    'touch-state',    'touchControls');
 
+// ─── VOLUME SLIDERS ──────────────────────────────────────────────────
+function bindVolume(sliderId, valueId, settingKey) {
+  const slider  = document.getElementById(sliderId);
+  const valueEl = document.getElementById(valueId);
+
+  function show(val) {
+    slider.value = val;
+    valueEl.textContent = val > 0 ? val + '%' : 'MUTED';
+    valueEl.className = 'volume-value' + (val > 0 ? '' : ' muted');
+  }
+
+  show(loadSettings()[settingKey]);
+
+  // Update while dragging so the menu music changes live.
+  slider.addEventListener('input', () => {
+    const s = loadSettings();
+    s[settingKey] = Number(slider.value);
+    saveSettings(s);
+    show(s[settingKey]);
+    window.dispatchEvent(new Event('rielvolumechange'));
+  });
+
+  // On release, play a sample SFX and confirm the save.
+  slider.addEventListener('change', () => {
+    if (settingKey === 'sfxVolume') playToggleSound();
+    showToast('SAVED');
+  });
+
+  return () => show(loadSettings()[settingKey]);
+}
+
+const refreshMusicSlider = bindVolume('slider-music', 'music-value', 'musicVolume');
+const refreshSfxSlider   = bindVolume('slider-sfx',   'sfx-value',   'sfxVolume');
+
 // ─── RESET ───────────────────────────────────────────────────────────
 let resetStep = 0;
 let resetTimer;
@@ -556,6 +690,9 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     bindToggle('toggle-hpbars',   'hpbars-state',   'hpBars');
     bindToggle('toggle-damnums',  'damnums-state',  'damageNumbers');
     bindToggle('toggle-touch',    'touch-state',    'touchControls');
+    refreshMusicSlider();
+    refreshSfxSlider();
+    window.dispatchEvent(new Event('rielvolumechange'));
     showToast('ALL DATA CLEARED');
   }
 });

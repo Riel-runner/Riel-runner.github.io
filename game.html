@@ -126,6 +126,7 @@
     border-color: rgba(245,196,0,0.9);
   }
 </style>
+<script src="volume.js"></script>
 </head>
 <body>
 <canvas id="game-canvas"></canvas>
@@ -228,8 +229,9 @@ const player = {
   maxHp: campaign.maxHp,
   lives: campaign.lives,
   gunDamage: campaign.gunDamage,
-  // Limited bullets per level (set on spawn)
+  // Magazine: infinite ammo, but reload when the mag is empty (or on R)
   bullets: 20,
+  reloadTimer: 0,
   shootTimer: 0,
   gunFlash: 0,
   animFrame: 0,
@@ -260,11 +262,15 @@ let pauseMenuIndex = 0;
 //  INPUT
 // ═══════════════════════════════════════════════════════════════
 const keys = {};
+// WASD mirrors the arrow keys: W = jump, A = left, S = dash, D = right.
+const WASD_MAP = { KeyW: 'ArrowUp', KeyA: 'ArrowLeft', KeyS: 'ArrowDown', KeyD: 'ArrowRight' };
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
+  if (WASD_MAP[e.code]) keys[WASD_MAP[e.code]] = true;
   if (e.code === 'Space')      e.preventDefault();
   if (e.code === 'ArrowUp')    e.preventDefault();
   if (e.code === 'ArrowDown')  e.preventDefault();
+  if (e.code === 'KeyR' && gameState === 'playing') startReload();
   if (e.code === 'Escape') {
     e.preventDefault();
     if (gameState === 'playing') {
@@ -275,7 +281,10 @@ window.addEventListener('keydown', e => {
     }
   }
 });
-window.addEventListener('keyup',  e => { keys[e.code] = false; });
+window.addEventListener('keyup',  e => {
+  keys[e.code] = false;
+  if (WASD_MAP[e.code]) keys[WASD_MAP[e.code]] = false;
+});
 
 let mouseX = 0, mouseY = 0;
 canvas.addEventListener('mousemove', e => {
@@ -472,6 +481,16 @@ function updatePlayer() {
   if (player.gunFlash   > 0) player.gunFlash--;
   if (player.hitFlash   > 0) player.hitFlash--;
 
+  // Reloading — refill the magazine when the timer finishes
+  if (player.reloadTimer > 0) {
+    player.reloadTimer--;
+    if (player.reloadTimer <= 0) {
+      player.bullets = MAG_SIZE;
+      player.gunFlash = 0;
+      playReloadSound(true);
+    }
+  }
+
   // Shooting
   const wantShoot = keys['Space'] || mouseDown;
   if (wantShoot && player.shootTimer <= 0) {
@@ -498,8 +517,63 @@ function updatePlayer() {
 //  BULLETS
 // ═══════════════════════════════════════════════════════════════
 const bullets = [];
-// Magazines (spawned on boss levels) — give player +5 bullets when picked up
-const magazines = [];
+
+// Ammo: infinite magazines. Reload takes 3 seconds.
+const MAG_SIZE      = 20;
+const RELOAD_FRAMES = 3 * 60; // 3s at 60fps
+const droppedMags   = [];     // empty magazines falling out during reload (visual only)
+
+function startReload() {
+  if (player.dead || player.reloadTimer > 0 || player.bullets >= MAG_SIZE) return;
+  player.reloadTimer = RELOAD_FRAMES;
+  // Spent magazine drops out of the gun
+  const gunX = player.facingRight ? player.x + 7 * PIXEL : player.x + 1 * PIXEL;
+  droppedMags.push({ x: gunX, y: player.y + 4 * PIXEL, vy: -1.2, vx: player.facingRight ? 0.4 : -0.4, life: 90 });
+  playReloadSound(false);
+}
+
+function updateDrawDroppedMags() {
+  for (let i = droppedMags.length - 1; i >= 0; i--) {
+    const m = droppedMags[i];
+    if (gameState === 'playing') {
+      m.vy += 0.25;
+      m.x  += m.vx;
+      m.y  += m.vy;
+      if (m.y > GROUND_Y - 6) { m.y = GROUND_Y - 6; m.vy = 0; m.vx = 0; }
+      m.life--;
+    }
+    if (m.life <= 0) { droppedMags.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, m.life / 30);
+    ctx.fillStyle = '#444450';
+    ctx.fillRect(wp(m.x), m.y, PIXEL, PIXEL * 2);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Short synthesized "clack" for reload start / finish
+let reloadAudioCtx = null;
+function playReloadSound(finished) {
+  try {
+    if (!reloadAudioCtx) reloadAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ac = reloadAudioCtx;
+    if (ac.state === 'suspended') ac.resume();
+    const vol = 0.25 * window.RielVolume.sfx();
+    if (vol <= 0) return;
+    const clicks = finished ? [0, 0.09] : [0];
+    for (const offset of clicks) {
+      const t0   = ac.currentTime + offset;
+      const osc  = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(finished ? 900 : 320, t0);
+      osc.frequency.exponentialRampToValueAtTime(finished ? 300 : 120, t0 + 0.06);
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.07);
+      osc.connect(gain); gain.connect(ac.destination);
+      osc.start(t0); osc.stop(t0 + 0.08);
+    }
+  } catch {}
+}
 
 // Powerups: jump double-height and speed boost
 const powerups = []; // each: {x,y,w,h,type:'jump'|'speed',collected:false}
@@ -516,13 +590,10 @@ player.speedPowerTimer = 0; // frames
 
 
 function firePlayerBullet() {
-  // Don't allow firing if out of bullets
+  // Can't fire while reloading; an empty mag starts a reload
+  if (player.reloadTimer > 0) return;
   if (!player.bullets || player.bullets <= 0) {
-    showToast('OUT OF BULLETS!');
-    // If already at 0, trigger life loss
-    if ((player.bullets || 0) <= 0) {
-      killPlayer();
-    }
+    startReload();
     return;
   }
 
@@ -568,11 +639,8 @@ function firePlayerBullet() {
   // Gunshot sound
   playGunshot();
 
-  // If bullets just hit 0, trigger a life loss
-  if (player.bullets <= 0) {
-    showToast('OUT OF BULLETS!');
-    killPlayer();
-  }
+  // Mag just emptied — reload automatically
+  if (player.bullets <= 0) startReload();
 }
 
 function updateBullets() {
@@ -654,33 +722,16 @@ const NPC_W = 18, NPC_H = 24;
 
 function spawnNPCs() {
   npcs.length = 0;
-  magazines.length = 0; // clear any previous magazines
+  player.bullets = MAG_SIZE;
+  player.reloadTimer = 0;
 
-  // If this is a boss level (10,20,...,100), spawn a single boss and magazines
+  // If this is a boss level (10,20,...,100), spawn a single boss
   if (campaign.level > 0 && campaign.level % 10 === 0) {
     const bossIndex = Math.floor(campaign.level / 10);
     const bossHp = BOSS_BASE_HP + (bossIndex - 1) * BOSS_HP_PER;
     const bossDmg = BOSS_BASE_DMG + (bossIndex - 1) * BOSS_DMG_PER;
     const wx = LEVEL_WIDTH - 400 + (Math.random() * 80 - 40);
     npcs.push(makeNPC(wx, true, bossHp, bossDmg));
-
-    // Spawn magazines around level — try to place on platforms first
-    const magCount = 6;
-    for (let i = 0; i < magCount; i++) {
-      let mx, my;
-      if (platforms.length > 0 && Math.random() > 0.25) {
-        const p = platforms[Math.floor(Math.random() * platforms.length)];
-        mx = p.x + Math.max(8, Math.random() * (p.w - 12));
-        my = p.y - 8;
-      } else {
-        mx = 600 + Math.random() * (LEVEL_WIDTH - 1200);
-        my = GROUND_Y - 12;
-      }
-      magazines.push({ x: mx, y: my, w: 10, h: 8, collected: false });
-    }
-
-    // Start boss levels with limited bullets
-    player.bullets = 20;
     return;
   }
 
@@ -691,9 +742,6 @@ function spawnNPCs() {
     const isTank = (i % 4 === 3); // every 4th NPC is a tank
     npcs.push(makeNPC(wx, false, null, null, isTank));
   }
-
-  // Start normal levels with limited bullets
-  player.bullets = 20;
 }
 
 function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank = false) {
@@ -924,13 +972,6 @@ function killNPC(n) {
     dmgNumbers.push({ x: n.x, y: n.y - 14, amount: reward + ' KHR', color: '#2ecc71', life: 55, vy: -1.0, isText: true });
   }
 
-  // Reward bullets for kills (cap to 20)
-  player.bullets = Math.min(20, (player.bullets || 0) + 5);
-  // Show pickup text
-  if (settings.damageNumbers) {
-    dmgNumbers.push({ x: n.x, y: n.y - 4, amount: '+5 BUL', color: '#f5c400', life: 50, vy: -1.0, isText: true });
-  }
-
   playDeathSound();
 
   // Boss-specific rewards/effects
@@ -962,29 +1003,6 @@ function checkLevelClear() {
   } else {
     gameState  = 'level_clear';
     stateTimer = 0;
-  }
-}
-
-// Handle magazine pickups (called each frame)
-function updateMagazines() {
-  if (!magazines || magazines.length === 0) return;
-  for (let i = magazines.length - 1; i >= 0; i--) {
-    const m = magazines[i];
-    if (m.collected) continue;
-    // Simple overlap check with player
-    if (
-      player.x < m.x + m.w &&
-      player.x + PLAYER_W > m.x &&
-      player.y < m.y + m.h &&
-      player.y + PLAYER_H > m.y
-    ) {
-      m.collected = true;
-      // Give bullets and cap to max (20)
-      player.bullets = Math.min(20, (player.bullets || 0) + 5);
-      // Visual
-      dmgNumbers.push({ x: m.x, y: m.y - 8, amount: '+5 BUL', color: '#f5c400', life: 50, vy: -1.0, isText: true });
-      playPickupSound && playPickupSound();
-    }
   }
 }
 
@@ -1189,9 +1207,6 @@ function killPlayer() {
   player.lives--;
   player.respawnTimer = 120; // 2 seconds
 
-  // When out of bullets we also want to notify
-  if ((player.bullets || 0) <= 0) showToast('OUT OF BULLETS — LIFE LOST');
-
   if (player.lives <= 0) {
     // Zone reset
     handleZoneFail();
@@ -1201,7 +1216,8 @@ function killPlayer() {
 function respawnPlayer() {
   player.dead         = false;
   player.hp           = player.maxHp;
-  player.bullets      = 20;
+  player.bullets      = MAG_SIZE;
+  player.reloadTimer  = 0;
   player.isDashing    = false;
   player.dashTimer    = 0;
   player.dashCooldown = 0; // reset cooldown on respawn as a small mercy
@@ -1234,7 +1250,7 @@ const shootSound = new Audio('assets/audio/sfx/shoot.ogg');
 function playGunshot() {
   // Clone the audio so rapid shots can overlap without cutting each other off.
   const shot = shootSound.cloneNode();
-  shot.volume = 0.55;
+  shot.volume = 0.55 * window.RielVolume.sfx();
   shot.play().catch(() => {});
 }
 
@@ -1250,7 +1266,7 @@ function playDeathSound() {
     const src  = ac.createBufferSource();
     const gain = ac.createGain();
     src.buffer = buf;
-    gain.gain.setValueAtTime(0.22, ac.currentTime);
+    gain.gain.setValueAtTime(Math.max(0.0011, 0.22 * window.RielVolume.sfx()), ac.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.15);
     src.connect(gain); gain.connect(ac.destination);
     src.start();
@@ -1328,8 +1344,28 @@ function drawPlayer() {
   for(let c=1;c<=5;c++){ p(c,3,jacket); p(c,4,jacket); }
 
   // Gun arm (always on right side of body = col 6+)
-  p(6,3,skin); p(7,3,gunC); p(8,3,gunC);
-  if (player.gunFlash > 0) { p(9,3,flash); p(9,2,flash); }
+  if (player.reloadTimer > 0) {
+    // Reload animation: gun tips down, new magazine slides up into it,
+    // then the gun snaps back level for the final moment.
+    const t = 1 - player.reloadTimer / RELOAD_FRAMES; // 0 → 1
+    const magC = '#444450';
+    if (t < 0.9) {
+      p(6,3,skin); p(7,4,gunC); p(8,5,gunC);          // gun angled down
+      if (t > 0.3) {
+        // Off-hand brings the new mag from the belt up to the gun
+        const k = Math.min(1, (t - 0.3) / 0.45);
+        const magRow = 7 - Math.round(k * 2);           // rows 7 → 5
+        p(6, magRow, magC); p(6, magRow + 1, magC);
+        if (k < 1) p(5, magRow + 1, skin);              // hand under the mag
+      }
+    } else {
+      p(6,3,skin); p(7,3,gunC); p(8,3,gunC);
+      p(7,4,magC);                                      // mag seated
+    }
+  } else {
+    p(6,3,skin); p(7,3,gunC); p(8,3,gunC);
+    if (player.gunFlash > 0) { p(9,3,flash); p(9,2,flash); }
+  }
 
   // Legs
   const lf = player.animFrame;
@@ -1348,6 +1384,20 @@ function drawPlayer() {
   }
 
   ctx.globalAlpha = 1;
+
+  // Reload progress bar above the player's head
+  if (player.reloadTimer > 0) {
+    const t    = 1 - player.reloadTimer / RELOAD_FRAMES;
+    const barW = 30, barH = 4;
+    const barX = wp(bx) + PLAYER_W / 2 - barW / 2;
+    const barY = by - 12;
+    ctx.fillStyle = '#0a0e1a';
+    ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+    ctx.fillStyle = '#2a2e44';
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.fillStyle = '#f5c400';
+    ctx.fillRect(barX, barY, Math.round(barW * t), barH);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1440,18 +1490,6 @@ function drawBullets() {
   }
 }
 
-function drawMagazines() {
-  for (const m of magazines) {
-    if (m.collected) continue;
-    const sx = wp(m.x);
-    if (sx < -40 || sx > BASE_W + 40) continue;
-    ctx.fillStyle = '#444450';
-    ctx.fillRect(sx, m.y, m.w, m.h);
-    ctx.fillStyle = '#f5c400';
-    ctx.fillRect(sx + 2, m.y + 2, m.w - 4, m.h - 4);
-  }
-}
-
 function drawPowerups() {
   for (const p of powerups) {
     if (p.collected) continue;
@@ -1494,11 +1532,11 @@ const PAUSE_ITEMS = [
   }},
 ];
 
-// Navigate pause menu with arrow keys, confirm with Space/Enter
+// Navigate pause menu with arrow keys or W/S, confirm with Space/Enter
 window.addEventListener('keydown', e => {
   if (gameState !== 'paused') return;
-  if (e.code === 'ArrowUp')   { pauseMenuIndex = (pauseMenuIndex - 1 + PAUSE_ITEMS.length) % PAUSE_ITEMS.length; e.preventDefault(); }
-  if (e.code === 'ArrowDown') { pauseMenuIndex = (pauseMenuIndex + 1) % PAUSE_ITEMS.length; e.preventDefault(); }
+  if (e.code === 'ArrowUp' || e.code === 'KeyW') { pauseMenuIndex = (pauseMenuIndex - 1 + PAUSE_ITEMS.length) % PAUSE_ITEMS.length; e.preventDefault(); }
+  if (e.code === 'ArrowDown' || e.code === 'KeyS') { pauseMenuIndex = (pauseMenuIndex + 1) % PAUSE_ITEMS.length; e.preventDefault(); }
   if (e.code === 'Enter' || e.code === 'Space') { PAUSE_ITEMS[pauseMenuIndex].action(); e.preventDefault(); }
 });
 
@@ -1643,10 +1681,20 @@ function drawHUD() {
     ctx.fillText('♥', barX + i * 18, barY + 30);
   }
 
-  // Bullet count
+  // Ammo: magazine count, or a blinking RELOADING with a countdown
   ctx.font = '6px "Press Start 2P", monospace';
-  ctx.fillStyle = (player.bullets || 0) > 5 ? '#e8e8d0' : '#e74c3c';
-  ctx.fillText('AMMO ' + (player.bullets || 0), barX, barY + 46);
+  if (player.reloadTimer > 0) {
+    const secs = (player.reloadTimer / 60).toFixed(1);
+    ctx.fillStyle = Math.floor(frameCount / 15) % 2 === 0 ? '#f5c400' : '#b8920a';
+    ctx.fillText('RELOADING ' + secs + 's', barX, barY + 46);
+  } else {
+    ctx.fillStyle = (player.bullets || 0) > 5 ? '#e8e8d0' : '#e74c3c';
+    ctx.fillText('AMMO ' + (player.bullets || 0) + ' / ∞', barX, barY + 46);
+    if ((player.bullets || 0) <= 5) {
+      ctx.fillStyle = '#888870';
+      ctx.fillText('[R] RELOAD', barX + 96, barY + 46);
+    }
+  }
 
   // Powerup indicators
   ctx.font = '6px "Press Start 2P", monospace';
@@ -1931,14 +1979,13 @@ function loop() {
     updateBullets();
     updateNPCs();
     updateLasers();
-    updateMagazines && updateMagazines();
     updatePowerups && updatePowerups();
   }
 
   drawWorld();
   drawLasers();
   drawBullets();
-  drawMagazines();
+  updateDrawDroppedMags();
   drawPowerups();
   drawNPCs();
   drawPlayer();
@@ -1956,7 +2003,7 @@ requestAnimationFrame(loop);
     // Game music starts from the beginning on every level and loops continuously.
     const gameMusic = new Audio('assets/audio/music/game-music.flac');
     gameMusic.loop = true;
-    gameMusic.volume = 0.50; // Sound effects use 0.55, so they sit slightly above the music.
+    window.RielVolume.bindMusic(gameMusic, 0.50); // Sound effects use 0.55, so they sit slightly above the music.
     gameMusic.play().catch(() => {});
     window.addEventListener('pointerdown', () => gameMusic.play().catch(() => {}), { once: true });
     window.addEventListener('keydown', () => gameMusic.play().catch(() => {}), { once: true });
