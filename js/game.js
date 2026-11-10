@@ -566,8 +566,10 @@ const LVL         = campaign.level || 1;
 const NPC_HP      = 10 + Math.max(0, LVL - 1) * 1;
 // Damage: +0.5 per level. Level 1 => 0.5 dmg, Level 99 => ~49.5 dmg
 const NPC_DMG_CONTACT = 0.5 * LVL; // per-frame contact damage (scales with level)
-// Slightly slower NPCs for more player reaction time
-const NPC_SPEED   = MOVE_SPEED * 1.1; // NPCs 10% faster than player
+// Enemies are slightly slower than the player so you can always outrun them
+// (the Speed upgrade widens the gap further).
+const NPC_SPEED   = MOVE_SPEED * 0.9;  // 10% slower than the player
+const BOSS_SPEED  = MOVE_SPEED * 0.95; // bosses 5% slower than the player
 // Attack cooldowns (frames; assuming ~60fps)
 const NPC_ATTACK_COOLDOWN_FRAMES = Math.round(0.2 * 60); // ~12 frames (0.2s)
 const BOSS_ATTACK_COOLDOWN_FRAMES = Math.round(0.1 * 60); // ~6 frames (0.1s)
@@ -726,7 +728,7 @@ function updateNPCs() {
     if (screenX < BASE_W + 40 && screenX > -80) {
       const dir = (player.x + PLAYER_W / 2) < (n.x + n.w / 2) ? -1 : 1;
       const gap = (player.x + PLAYER_W / 2) - (n.x + n.w / 2);
-      const speed = n.isBoss ? MOVE_SPEED : n.isTank ? NPC_SPEED * 0.45 : NPC_SPEED;
+      const speed = n.isBoss ? BOSS_SPEED : n.isTank ? NPC_SPEED * 0.45 : NPC_SPEED;
       if (Math.abs(gap) > n.w * 0.6) {
         n.x += dir * speed;
       }
