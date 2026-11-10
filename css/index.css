@@ -27,7 +27,12 @@ body {
 .overlay {
   position: absolute;
   inset: 0;
-  background: rgba(10, 14, 26, 0.72);
+  /* Dark behind the title and menu, lighter toward the floor so the background battle shows. */
+  background: linear-gradient(to bottom,
+    rgba(10, 14, 26, 0.80) 0%,
+    rgba(10, 14, 26, 0.72) 55%,
+    rgba(10, 14, 26, 0.30) 85%,
+    rgba(10, 14, 26, 0.15) 100%);
   z-index: 1;
 }
 
@@ -149,7 +154,7 @@ body {
 .btn-play:active { box-shadow: 0 2px #b8920a, 0 3px #3d2b1f; }
 
 .btn-secondary {
-  background: transparent;
+  background: rgba(10, 14, 26, 0.75); /* keeps the text readable over the background battle */
   color: #e8e8d0;
   border: 3px solid #444450;
   box-shadow: 0 6px #222230, 0 8px #0a0e1a;
@@ -190,6 +195,11 @@ body {
   font-size: 7px;
   color: #333344;
   z-index: 5;
+}
+
+/* Taller screens: lift the menu a little so the background battle along the floor stays visible. */
+@media (min-height: 641px) {
+  .container { padding-bottom: clamp(40px, 13vh, 150px); }
 }
 
 /* Short screens (e.g. landscape laptops/phones): tighten spacing so the title and

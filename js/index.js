@@ -1,289 +1,228 @@
 // ─── BACKGROUND ANIMATION ───────────────────────────────────────────
+// A looping battle behind the title: the player (in their equipped shop skin,
+// weapon skin and trail) runs in place and shoots an endless stream of enemies
+// that march in close. Everything scales with the screen size.
 const bgCanvas = document.getElementById('bg-canvas');
 const ctx = bgCanvas.getContext('2d');
-ctx.imageSmoothingEnabled = false;
+const COS = window.RielCosmetics;
+const PLAYER_SKIN = COS.equipped('player');
+const WEAPON_SKIN = COS.equipped('weapon');
+const TRAIL_ID    = COS.equipped('trail').id;
 
-let W, H;
+// Enemy looks, matching the game (regular / runner / tank).
+const ENEMY_TYPES = {
+  normal: { body: '#c0392b', eye: '#f5c400', hp: 3, speed: 1.0, size: 1.0 },
+  runner: { body: '#e67e22', eye: '#ffffff', hp: 2, speed: 1.6, size: 1.0 },
+  tank:   { body: '#6c2eb9', eye: '#f5c400', hp: 6, speed: 0.6, size: 1.5 },
+};
+const ENEMY_COUNT = 4;
+
+let W, H, S, FLOOR_Y;   // S = screen px per sprite pixel; FLOOR_Y = floor surface (px)
+const player  = { x: 0, shootTimer: 0, gunFlash: 0, recoil: 0 };
+const bullets = [], enemies = [], sparks = [], coins = [], trail = [];
+
 function resize() {
   W = bgCanvas.width = window.innerWidth;
   H = bgCanvas.height = window.innerHeight;
+  ctx.imageSmoothingEnabled = false;
+  S = Math.max(4, Math.min(8, Math.round(H / 100)));          // bigger sprites on bigger screens
+  FLOOR_Y = H - Math.max(36, Math.round(H * 0.08));
+  player.x = Math.max(12, Math.round(W * 0.06));
+  for (const e of enemies) { e.cell = Math.round(S * ENEMY_TYPES[e.type].size); e.y = FLOOR_Y - 7 * e.cell; }
 }
 resize();
 window.addEventListener('resize', resize);
 
-const S = 3; // pixel scale
+// Closest the enemies get: just in front of the gun.
+const frontLine = () => player.x + 15 * S;
 
-function px(x, y, color) {
-  ctx.fillStyle = color;
-  ctx.fillRect(x * S, y * S, S, S);
+function spawnEnemy(x) {
+  const r = Math.random();
+  const type = r < 0.2 ? 'tank' : r < 0.45 ? 'runner' : 'normal';
+  const t = ENEMY_TYPES[type], cell = Math.round(S * t.size);
+  enemies.push({ type, x, y: FLOOR_Y - 7 * cell, cell, hp: t.hp, maxHp: t.hp,
+                 dead: false, deadTimer: 0, frame: Math.floor(Math.random() * 20), hitFlash: 0, hop: 0 });
 }
+// Start with a few already close, the rest walking in.
+for (let i = 0; i < ENEMY_COUNT; i++) spawnEnemy(Math.max(frontLine() + 40, W * 0.45) + i * W * 0.18);
 
-function rect(x, y, w, h, color) {
-  ctx.fillStyle = color;
-  ctx.fillRect(x * S, y * S, w * S, h * S);
-}
-
-// ─── SCROLLING BACKGROUND TILES ─────────────────────────────────────
+// ─── DRAWING ─────────────────────────────────────────────────────────
 let scrollX = 0;
-const TILE = 16;
-const FLOOR_Y = Math.floor(H / S) - 10;
 
 function drawBackground() {
-  // Sky
   ctx.fillStyle = '#0a0e1a';
   ctx.fillRect(0, 0, W, H);
 
-  // Grid lines
+  // Grid
+  const grid = 16 * S;
   ctx.fillStyle = 'rgba(245,196,0,0.04)';
-  const gridSize = TILE * S;
-  const offX = (scrollX * S) % gridSize;
-  for (let x = -gridSize + offX; x < W; x += gridSize) {
-    ctx.fillRect(x, 0, 1, H);
-  }
-  for (let y = 0; y < H; y += gridSize) {
-    ctx.fillRect(0, y, W, 1);
-  }
+  for (let x = -(scrollX % grid); x < W; x += grid) ctx.fillRect(x, 0, 1, FLOOR_Y);
+  for (let y = 0; y < FLOOR_Y; y += grid) ctx.fillRect(0, y, W, 1);
+
+  // Parallax pillars
+  const gap = 40 * S, pOff = (scrollX * 0.3) % gap;
+  ctx.fillStyle = 'rgba(30,35,60,0.8)';
+  for (let x = -pOff; x < W; x += gap) ctx.fillRect(x, 0, 4 * S, FLOOR_Y);
 
   // Floor
-  const floorPxY = FLOOR_Y * S;
+  const edge = Math.max(2, Math.round(S / 2));
   ctx.fillStyle = '#1a1e30';
-  ctx.fillRect(0, floorPxY, W, H - floorPxY);
-  ctx.fillStyle = '#f5c400';
-  ctx.fillRect(0, floorPxY, W, 2);
-  ctx.fillStyle = '#b8920a';
-  ctx.fillRect(0, floorPxY + 2, W, 2);
-
-  // Scrolling floor tiles
+  ctx.fillRect(0, FLOOR_Y, W, H - FLOOR_Y);
+  ctx.fillStyle = '#f5c400'; ctx.fillRect(0, FLOOR_Y, W, edge);
+  ctx.fillStyle = '#b8920a'; ctx.fillRect(0, FLOOR_Y + edge, W, edge);
+  const tile = 16 * S, tOff = scrollX % (tile * 2);
   ctx.fillStyle = 'rgba(245,196,0,0.07)';
-  const tileW = TILE * S;
-  const tileOff = Math.floor(scrollX * S) % (tileW * 2);
-  for (let x = -tileOff; x < W; x += tileW * 2) {
-    ctx.fillRect(x, floorPxY + 4, tileW, H);
-  }
-
-  // Background pillars (parallax, slow scroll)
-  const pillarOff = Math.floor(scrollX * 0.3 * S) % (40 * S);
-  ctx.fillStyle = 'rgba(30,35,60,0.8)';
-  for (let x = -pillarOff; x < W; x += 40 * S) {
-    ctx.fillRect(x, 0, 4 * S, floorPxY);
-  }
+  for (let x = -tOff; x < W; x += tile * 2) ctx.fillRect(x, FLOOR_Y + S, tile, H);
 }
 
-// ─── PLAYER ─────────────────────────────────────────────────────────
-const player = {
-  x: 8, y: FLOOR_Y - 9,
-  frame: 0, shootCooldown: 0,
-  gunFlash: 0
-};
-
-function drawPlayer(legFrame) {
-  const px2 = (x, y, c) => px(player.x + x, player.y + y, c);
-  const skin = '#f5c89a', hair = '#222', jacket = '#2255cc',
-        boot = '#3d2b1f', gun = '#888870', barrel = '#ccccaa';
-
-  // head
-  px2(3,0,hair); px2(4,0,hair); px2(5,0,hair);
-  px2(2,1,skin); px2(3,1,skin); px2(4,1,skin); px2(5,1,skin); px2(6,1,hair);
-  px2(2,2,skin); px2(3,2,skin); px2(4,2,'#111'); px2(5,2,skin); px2(6,2,skin);
-  // body
-  for(let i=2;i<=6;i++) { px2(i,3,jacket); px2(i,4,jacket); }
-  // gun arm
-  px2(7,3,skin); px2(8,3,gun); px2(9,3,gun); px2(10,3,barrel);
-  px2(11,3,barrel); px2(12,3,barrel); px2(13,3,barrel);
-  if(player.gunFlash>0){
-    px2(14,2,'#f5c400'); px2(14,3,'#fff'); px2(14,4,'#f5c400');
-    px2(15,3,'#f5c400');
-  }
-  // legs
-  if(legFrame===0){
-    px2(3,5,jacket); px2(4,5,jacket); px2(5,5,jacket);
-    px2(3,6,boot); px2(5,6,boot); px2(3,7,boot); px2(5,7,boot);
-  } else if(legFrame===1){
-    px2(3,5,jacket); px2(4,5,jacket); px2(5,5,jacket);
-    px2(2,6,boot); px2(4,6,boot); px2(2,7,boot); px2(5,7,boot);
-  } else {
-    px2(3,5,jacket); px2(4,5,jacket); px2(5,5,jacket);
-    px2(3,6,boot); px2(5,6,boot); px2(4,7,boot); px2(6,7,boot);
-  }
+function shadow(cx, w) {
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(Math.round(cx - w / 2), FLOOR_Y - Math.round(S / 2), Math.round(w), Math.round(S / 2) + 1);
 }
 
-// ─── BULLETS ────────────────────────────────────────────────────────
-const bullets = [];
+const SKULL = [[1,0],[2,0],[3,0],[0,1],[2,1],[4,1],[0,2],[1,2],[2,2],[3,2],[4,2],[1,3],[3,3],[1,4],[2,4],[3,4]];
 
-function spawnBullet() {
-  bullets.push({ x: (player.x + 14) * S, y: (player.y + 3) * S + 1 });
-  player.gunFlash = 5;
-}
-
-function updateBullets() {
-  for(let i = bullets.length - 1; i >= 0; i--) {
-    bullets[i].x += 9;
-    if(bullets[i].x > W) bullets.splice(i, 1);
-  }
-}
-
-function drawBullets() {
-  ctx.fillStyle = '#f5c400';
-  for(const b of bullets) {
-    ctx.fillRect(b.x, b.y, 14, 3);
-    ctx.fillStyle = 'rgba(245,196,0,0.3)';
-    ctx.fillRect(b.x - 6, b.y, 6, 3);
-    ctx.fillStyle = '#f5c400';
-  }
-}
-
-// ─── ENEMIES ────────────────────────────────────────────────────────
-const enemies = [];
-
-function spawnEnemy() {
-  const col = W / S - 5 - Math.random() * 25;
-  enemies.push({
-    x: col,
-    y: FLOOR_Y - 8,
-    hp: 3,
-    maxHp: 3,
-    dead: false,
-    deadTimer: 0,
-    frame: 0
-  });
-}
-
-// Spawn initial enemies
-for(let i = 0; i < 4; i++) spawnEnemy();
-
-function drawEnemy(e, legFrame) {
-  if(e.dead) {
-    // Skull
-    const sx = e.x, sy = e.y;
-    px(sx+1,sy+0,'#e8e8d0'); px(sx+2,sy+0,'#e8e8d0'); px(sx+3,sy+0,'#e8e8d0');
-    px(sx+0,sy+1,'#e8e8d0'); px(sx+1,sy+1,'#0a0e1a'); px(sx+2,sy+1,'#e8e8d0');
-    px(sx+3,sy+1,'#0a0e1a'); px(sx+4,sy+1,'#e8e8d0');
-    px(sx+0,sy+2,'#e8e8d0'); px(sx+1,sy+2,'#e8e8d0'); px(sx+2,sy+2,'#e8e8d0');
-    px(sx+3,sy+2,'#e8e8d0'); px(sx+4,sy+2,'#e8e8d0');
-    px(sx+1,sy+3,'#e8e8d0'); px(sx+2,sy+3,'#0a0e1a'); px(sx+3,sy+3,'#e8e8d0');
-    px(sx+1,sy+4,'#e8e8d0'); px(sx+2,sy+4,'#e8e8d0'); px(sx+3,sy+4,'#e8e8d0');
+function drawEnemy(e) {
+  const c = e.cell, t = ENEMY_TYPES[e.type];
+  if (e.dead) {                       // skull where it fell
+    const sy = FLOOR_Y - 5 * c;
+    ctx.fillStyle = '#e8e8d0';
+    for (const [x, y] of SKULL) ctx.fillRect(e.x + x * c, sy + y * c, c, c);
+    ctx.fillStyle = '#0a0e1a';
+    for (const [x, y] of [[1,1],[3,1],[2,3]]) ctx.fillRect(e.x + x * c, sy + y * c, c, c);
     return;
   }
-  const ex = (x,y,c) => px(e.x+x, e.y+y, c);
-  const body='#c0392b', eye='#f5c400', boot='#333';
-  // head
-  ex(1,0,body); ex(2,0,body); ex(3,0,body); ex(4,0,body);
-  ex(0,1,body); ex(1,1,eye);  ex(2,1,body); ex(3,1,eye);  ex(4,1,body); ex(5,1,body);
-  ex(0,2,body); ex(1,2,body); ex(2,2,body); ex(3,2,body); ex(4,2,body); ex(5,2,body);
-  // body
-  for(let i=0;i<=5;i++){ ex(i,3,body); ex(i,4,body); }
-  // legs
-  if(legFrame===0){
-    ex(1,5,boot); ex(3,5,boot); ex(1,6,boot); ex(3,6,boot);
-  } else {
-    ex(0,5,boot); ex(2,5,boot); ex(0,6,boot); ex(4,6,boot);
-  }
+  const lift = e.hop > 0 ? Math.round(Math.sin(e.hop / 10 * Math.PI) * 3 * S) : 0;
+  const y0 = e.y - lift;
+  const body = e.hitFlash > 0 ? '#ffffff' : t.body, eye = t.eye, boot = '#222233';
+  const ep = (x, y, col) => { ctx.fillStyle = col; ctx.fillRect(e.x + x * c, y0 + y * c, c, c); };
+  shadow(e.x + 3 * c, 6 * c);
+  ep(1,0,body); ep(2,0,body); ep(3,0,body); ep(4,0,body);
+  ep(0,1,body); ep(1,1,eye);  ep(2,1,body); ep(3,1,eye);  ep(4,1,body); ep(5,1,body);
+  for (let i = 0; i <= 5; i++) { ep(i,2,body); ep(i,3,body); ep(i,4,body); }
+  if (Math.floor(e.frame / 10) % 2 === 0) { ep(1,5,boot); ep(3,5,boot); ep(1,6,boot); ep(3,6,boot); }
+  else                                    { ep(0,5,boot); ep(2,5,boot); ep(0,6,boot); ep(4,6,boot); }
+  // HP bar
+  const bw = 6 * c, bh = Math.max(3, Math.round(S / 2)), by = y0 - Math.max(6, S);
+  ctx.fillStyle = '#c0392b'; ctx.fillRect(e.x, by, bw, bh);
+  ctx.fillStyle = '#2ecc71'; ctx.fillRect(e.x, by, Math.round(bw * e.hp / e.maxHp), bh);
 }
 
-function updateEnemies(tick) {
-  for(let i = enemies.length - 1; i >= 0; i--) {
-    const e = enemies[i];
-    if(e.dead) {
-      e.deadTimer++;
-      if(e.deadTimer > 90) {
-        enemies.splice(i,1);
-        spawnEnemy();
-      }
-      continue;
-    }
-    // Walk left slowly
-    e.x -= 0.3;
-    e.frame++;
-    // Bullet collision
-    for(let j = bullets.length - 1; j >= 0; j--) {
-      const b = bullets[j];
-      const ex = e.x * S, ey = e.y * S;
-      if(b.x + 14 > ex && b.x < ex + 6*S && b.y + 3 > ey && b.y < ey + 8*S) {
-        e.hp--;
-        bullets.splice(j,1);
-        if(e.hp <= 0) { e.dead = true; e.deadTimer = 0; }
+const playerTop = () => FLOOR_Y - 8 * S;
+const muzzle = () => ({ x: player.x - player.recoil + 10 * S, y: playerTop() + 3 * S + Math.floor(S / 4) });
+
+// ─── UPDATE ──────────────────────────────────────────────────────────
+function nearestEnemy() {
+  let best = null;
+  for (const e of enemies) if (!e.dead && e.x < W && (!best || e.x < best.x)) best = e;
+  return best;
+}
+
+function update(tick) {
+  scrollX += S * 0.4;
+
+  // Shoot steadily at whatever is closest on screen
+  if (++player.shootTimer >= 14 && nearestEnemy()) {
+    player.shootTimer = 0;
+    const m = muzzle();
+    bullets.push({ x: m.x, y: m.y });
+    player.gunFlash = 4;
+    player.recoil = Math.round(S / 2);
+  }
+  if (player.gunFlash > 0) player.gunFlash--;
+  if (player.recoil > 0 && tick % 2 === 0) player.recoil--;
+
+  // Bullets and hits
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += 3 * S;
+    let hit = false;
+    for (const e of enemies) {
+      if (e.dead) continue;
+      if (b.x + 3 * S > e.x && b.x < e.x + 6 * e.cell && b.y > e.y - 3 * S && b.y < FLOOR_Y) {
+        e.hp--; e.hitFlash = 5; hit = true;
+        for (let k = 0; k < 4; k++) {
+          sparks.push({ x: b.x + 2 * S, y: b.y, vx: -Math.random() * S * 0.6, vy: (Math.random() - 0.5) * S * 0.6, life: 12 });
+        }
+        if (e.hp <= 0) {
+          e.dead = true; e.deadTimer = 0;
+          for (let k = 0; k < 6; k++) {
+            coins.push({ x: e.x + 3 * e.cell, y: e.y + 2 * e.cell, vx: (Math.random() - 0.5) * S * 0.7,
+                         vy: -Math.random() * S * 0.9 - S * 0.3, life: 45 });
+          }
+        }
         break;
       }
     }
-    // Reset if walked too far left
-    if(e.x < player.x + 20) {
-      e.x = W/S - 5;
+    if (hit || b.x > W) bullets.splice(i, 1);
+  }
+
+  // Enemies march in, then hop at the player once they reach the front line
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (e.dead) {
+      if (++e.deadTimer > 60) { enemies.splice(i, 1); spawnEnemy(W + 20 + Math.random() * W * 0.25); }
+      continue;
     }
+    e.frame++;
+    if (e.hitFlash > 0) e.hitFlash--;
+    const stop = frontLine();
+    if (e.x > stop) e.x = Math.max(stop, e.x - ENEMY_TYPES[e.type].speed * S * 0.25);
+    else if (e.hop > 0) e.hop--;
+    else if (Math.random() < 0.02) e.hop = 10;
   }
+
+  // Trail from the shop (drifts back as the floor scrolls)
+  COS.spawnTrail(trail, TRAIL_ID, player.x + S, playerTop(), 5 * S, 8 * S, tick);
+  for (const q of trail) q.x -= S * 0.4;
+  COS.updateTrail(trail);
 }
 
-// ─── COIN PARTICLES ─────────────────────────────────────────────────
-const coins = [];
-
-function spawnCoins(x, y) {
-  for(let i = 0; i < 3; i++) {
-    coins.push({
-      x: x * S, y: y * S,
-      vx: (Math.random()-0.5)*3,
-      vy: -Math.random()*4 - 1,
-      life: 40
-    });
+function drawEffects() {
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const p = sparks[i];
+    p.x += p.vx; p.y += p.vy;
+    ctx.globalAlpha = p.life / 12;
+    ctx.fillStyle = WEAPON_SKIN.bullet;
+    ctx.fillRect(p.x, p.y, Math.max(2, S / 2), Math.max(2, S / 2));
+    if (--p.life <= 0) sparks.splice(i, 1);
   }
-}
-
-function updateDrawCoins() {
-  for(let i = coins.length-1; i>=0; i--) {
+  for (let i = coins.length - 1; i >= 0; i--) {
     const c = coins[i];
-    c.x += c.vx; c.y += c.vy; c.vy += 0.3;
-    c.life--;
-    const alpha = c.life / 40;
-    ctx.globalAlpha = alpha;
+    c.x += c.vx; c.y += c.vy; c.vy += S * 0.08;
+    if (c.y > FLOOR_Y - S) { c.y = FLOOR_Y - S; c.vy *= -0.4; c.vx *= 0.7; }
+    ctx.globalAlpha = Math.min(1, c.life / 20);
     ctx.fillStyle = '#f5c400';
     ctx.fillRect(c.x, c.y, S, S);
-    ctx.globalAlpha = 1;
-    if(c.life <= 0) coins.splice(i,1);
+    ctx.fillStyle = '#b8920a';
+    ctx.fillRect(c.x + S / 2, c.y + S / 2, S / 2, S / 2);
+    if (--c.life <= 0) coins.splice(i, 1);
   }
+  ctx.globalAlpha = 1;
 }
 
 // ─── MAIN LOOP ───────────────────────────────────────────────────────
 let tick = 0;
-let shootTimer = 0;
-
 function loop() {
+  update(tick);
   drawBackground();
 
-  scrollX += 1.5;
+  COS.drawTrail(trail, ctx, x => x);
+  shadow(player.x + 5 * S, 6 * S);
+  COS.drawPlayerSprite(ctx, player.x - player.recoil, playerTop(), S, PLAYER_SKIN, WEAPON_SKIN,
+                       { frame: Math.floor(tick / 7) % 3, gunFlash: player.gunFlash > 0 });
 
-  const legFrame = Math.floor(tick / 8) % 3;
-  const enemyLeg = Math.floor(tick / 10) % 2;
-
-  // Auto shoot
-  shootTimer++;
-  if(shootTimer >= 25) { spawnBullet(); shootTimer = 0; }
-  if(player.gunFlash > 0) player.gunFlash--;
-
-  updateBullets();
-  updateEnemies(tick);
-
-  // Draw
-  drawPlayer(legFrame);
-  drawBullets();
-
-  for(const e of enemies) {
-    const eLeg = Math.floor(e.frame / 10) % 2;
-    drawEnemy(e, eLeg);
-    if(!e.dead) {
-      // HP bar above enemy
-      const barX = e.x * S;
-      const barY = e.y * S - S*2;
-      ctx.fillStyle = '#c0392b';
-      ctx.fillRect(barX, barY, 6*S, 3);
-      ctx.fillStyle = '#2ecc71';
-      ctx.fillRect(barX, barY, Math.floor(6*S * (e.hp/e.maxHp)), 3);
-    }
+  const bh = Math.max(3, Math.round(S / 2));
+  for (const b of bullets) {
+    ctx.fillStyle = WEAPON_SKIN.glow;   ctx.fillRect(b.x - 2 * S, b.y, 2 * S, bh);
+    ctx.fillStyle = WEAPON_SKIN.bullet; ctx.fillRect(b.x, b.y, 3 * S, bh);
   }
-
-  updateDrawCoins();
+  for (const e of enemies) drawEnemy(e);
+  drawEffects();
 
   tick++;
   requestAnimationFrame(loop);
 }
-
 loop();
 
 // ─── BEST RIELS ─────────────────────────────────────────────────────
