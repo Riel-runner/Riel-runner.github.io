@@ -74,7 +74,9 @@ function render() {
   document.getElementById('level-display').textContent = campaign.level;
   document.getElementById('riels-display').textContent = campaign.riels;
   document.getElementById('hp-display').textContent = campaign.hp + ' / ' + campaign.maxHp;
-  document.getElementById('lives-display').innerHTML = '&#9829;'.repeat(campaign.lives);
+  // Lives only refill after boss levels now, so show lost ones as empty hearts.
+  const lives = Math.max(0, Math.min(3, campaign.lives));
+  document.getElementById('lives-display').innerHTML = '&#9829;'.repeat(lives) + '&#9825;'.repeat(3 - lives);
   document.getElementById('upgrades-display').textContent = campaign.upgradeCount;
 
   const cost = campaign.upgradeCost;
@@ -152,7 +154,9 @@ function saveCampaign() {
 function continueToGame() {
   // Advance to next level
   campaign.level++;
-  campaign.lives = 3;
+  // Start every level at full HP. Lives are NOT reset here: they only refill
+  // to 3 after beating a boss level (handled in game.js when the level is cleared).
+  campaign.hp = campaign.maxHp;
   // Write to localStorage BEFORE redirect so game.html reads the correct level
   localStorage.setItem('activeCampaign', JSON.stringify(campaign));
   const idx = parseInt(localStorage.getItem('activeCampaignIdx'));

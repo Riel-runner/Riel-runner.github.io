@@ -896,11 +896,19 @@ function updatePowerups() {
   }
 }
 
+// After clearing a level: HP is fully healed, and beating a boss level
+// (every 10th) also restores lives to the max of 3. Otherwise lost lives stay lost.
+const MAX_LIVES = 3;
+function isBossLevel() { return campaign.level % 10 === 0; }
+function applyLevelClearRewards() {
+  campaign.maxHp = player.maxHp;
+  campaign.hp    = player.maxHp;
+  campaign.lives = isBossLevel() ? MAX_LIVES : player.lives;
+}
+
 function goToShop() {
   // Sync campaign state
-  campaign.hp      = Math.ceil(player.hp);
-  campaign.maxHp   = player.maxHp;
-  campaign.lives   = player.lives;
+  applyLevelClearRewards();
   campaign.gunDamage  = player.gunDamage;
   // upgradeCost already tracked in campaign
   localStorage.setItem('activeCampaign', JSON.stringify(campaign));
@@ -1689,6 +1697,11 @@ function drawOverlay() {
 
   if (gameState === 'level_clear') {
     drawBanner('LEVEL COMPLETE!', '#2ecc71', cx, cy);
+    if (stateTimer > 35) {
+      ctx.font      = '7px "Public Pixel", monospace';
+      ctx.fillStyle = '#2ecc71';
+      ctx.fillText('HP RESTORED', cx, cy + 50);
+    }
     if (stateTimer > 90) proceedToShop();
 
   } else if (gameState === 'boss_slayed') {
@@ -1697,6 +1710,10 @@ function drawOverlay() {
       ctx.font      = '7px "Public Pixel", monospace';
       ctx.fillStyle = '#2ecc71';
       ctx.fillText('MAX HP UP! NOW ' + player.maxHp, cx, cy + 50);
+    }
+    if (stateTimer > 60) {
+      ctx.fillStyle = '#e74c3c';
+      ctx.fillText('LIVES RESTORED  ' + '♥'.repeat(MAX_LIVES) + '  HP RESTORED', cx, cy + 66);
     }
     if (stateTimer > 120) proceedToShop();
 
@@ -1739,9 +1756,7 @@ function drawBanner(text, color, cx, cy) {
 function proceedToShop() {
   if (gameState === '_transitioning') return;
   gameState = '_transitioning';
-  campaign.hp        = Math.ceil(player.hp);
-  campaign.maxHp     = player.maxHp;
-  campaign.lives     = player.lives;
+  applyLevelClearRewards();
   campaign.gunDamage = player.gunDamage;
   // NOTE: level increment happens in shop.html when player clicks Continue
   const best = parseInt(localStorage.getItem('bestRiels') || '0');
