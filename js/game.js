@@ -1776,8 +1776,14 @@ function canvasPoint(e) {
 
 // Click or tap a pause menu item to choose it; hovering with a mouse highlights it.
 canvas.addEventListener('pointerdown', e => {
-  if (gameState !== 'paused') return;
   const p = canvasPoint(e);
+  // The pause button (top-right) toggles pause; preventDefault stops the click from also firing a shot.
+  if (pauseButtonVisible() && inPauseButton(p.x, p.y)) {
+    e.preventDefault();
+    togglePause();
+    return;
+  }
+  if (gameState !== 'paused') return;
   const i = pauseItemAt(p.x, p.y);
   if (i < 0) return;
   e.preventDefault();
@@ -1786,11 +1792,12 @@ canvas.addEventListener('pointerdown', e => {
 });
 canvas.addEventListener('pointermove', e => {
   if (e.pointerType !== 'mouse') return;
-  if (gameState !== 'paused') { canvas.style.cursor = ''; return; } // back to the crosshair
   const p = canvasPoint(e);
+  pauseBtnHover = pauseButtonVisible() && inPauseButton(p.x, p.y);
+  if (gameState !== 'paused') { canvas.style.cursor = pauseBtnHover ? 'pointer' : ''; return; } // else crosshair
   const i = pauseItemAt(p.x, p.y);
   if (i >= 0) pauseMenuIndex = i;
-  canvas.style.cursor = i >= 0 ? 'pointer' : '';
+  canvas.style.cursor = i >= 0 || pauseBtnHover ? 'pointer' : '';
 });
 
 // Navigate pause menu with arrow keys or W/S, confirm with Space/Enter
@@ -1981,19 +1988,52 @@ function drawHUD() {
   ctx.fillStyle = dashReady ? '#2ecc71' : '#888870';
   ctx.fillText(dashReady ? 'DASH RDY' : 'DASH ' + Math.ceil(player.dashCooldown / 60) + 'S', barX, barY + 68);
 
-  // Right panel
+  // Right panel (below the pause button)
+  const rightY = PAUSE_BTN.y + PAUSE_BTN.h + 14;
   ctx.font = '7px "Public Pixel", monospace';
   ctx.textAlign = 'right';
   ctx.fillStyle = '#f5c400';
-  ctx.fillText('LVL ' + campaign.level, BASE_W - 10, 18);
+  ctx.fillText('LVL ' + campaign.level, BASE_W - 10, rightY);
   ctx.fillStyle = '#e8e8d0';
-  ctx.fillText(campaign.riels + ' KHR', BASE_W - 10, 30);
+  ctx.fillText(campaign.riels + ' KHR', BASE_W - 10, rightY + 12);
   ctx.fillStyle = '#888870';
-  ctx.fillText('DMG ' + player.gunDamage, BASE_W - 10, 42);
+  ctx.fillText('DMG ' + player.gunDamage, BASE_W - 10, rightY + 24);
   const alive = npcs.filter(n => !n.dead).length;
   ctx.fillStyle = alive > 0 ? '#e8e8d0' : '#2ecc71';
-  ctx.fillText(alive + ' LEFT', BASE_W - 10, 54);
+  ctx.fillText(alive + ' LEFT', BASE_W - 10, rightY + 36);
   ctx.textAlign = 'left';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PAUSE BUTTON (top-right of the game screen; click or tap)
+// ═══════════════════════════════════════════════════════════════
+const PAUSE_BTN = { x: BASE_W - 38, y: 6, w: 30, h: 22 };
+let pauseBtnHover = false;
+
+function pauseButtonVisible() { return gameState === 'playing' || gameState === 'paused'; }
+function inPauseButton(x, y) {
+  const b = PAUSE_BTN;
+  return x >= b.x - 4 && x <= b.x + b.w + 4 && y >= b.y - 4 && y <= b.y + b.h + 4; // a little extra hit area
+}
+
+function drawPauseButton() {
+  if (!pauseButtonVisible()) return;
+  const b = PAUSE_BTN, paused = gameState === 'paused';
+  ctx.fillStyle = pauseBtnHover ? 'rgba(245,196,0,0.25)' : 'rgba(15,21,38,0.75)';
+  ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.fillStyle = pauseBtnHover || paused ? '#f5c400' : 'rgba(245,196,0,0.6)';
+  ctx.fillRect(b.x, b.y, b.w, 2); ctx.fillRect(b.x, b.y + b.h - 2, b.w, 2);
+  ctx.fillRect(b.x, b.y, 2, b.h); ctx.fillRect(b.x + b.w - 2, b.y, 2, b.h);
+  ctx.fillStyle = '#e8e8d0';
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  if (paused) {
+    // ▶ resume (pixel triangle)
+    for (let i = 0; i < 5; i++) ctx.fillRect(cx - 4 + i * 2, cy - 6 + i * 1.5, 2, 12 - i * 3);
+  } else {
+    // ❚❚ pause
+    ctx.fillRect(cx - 6, cy - 6, 4, 12);
+    ctx.fillRect(cx + 2, cy - 6, 4, 12);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2149,19 +2189,7 @@ function proceedToShop() {
     el.addEventListener('lostpointercapture', release);
   });
 
-  // Pause button: works with a mouse click as well as a tap.
-  const pauseBtn = document.getElementById('btn-pause');
-  if (pauseBtn) {
-    pauseBtn.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      pauseBtn.classList.add('pressed');
-      togglePause();
-    });
-    const unpress = () => pauseBtn.classList.remove('pressed');
-    pauseBtn.addEventListener('pointerup', unpress);
-    pauseBtn.addEventListener('pointercancel', unpress);
-    pauseBtn.addEventListener('pointerleave', unpress);
-  }
+  // (The pause button is drawn on the game canvas, top-right, for everyone: see drawPauseButton.)
 
   // Dash button — live cooldown countdown
   const dashBtn = document.getElementById('btn-dash');
@@ -2244,6 +2272,7 @@ function loop() {
   drawToast();
   drawOverlay();
   drawPauseMenu();
+  drawPauseButton(); // on top, so it can also be clicked to resume
 }
 
 requestAnimationFrame(loop);
