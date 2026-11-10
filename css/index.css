@@ -157,6 +157,9 @@ body {
 .btn-secondary:hover { border-color: #f5c400; color: #f5c400; }
 .btn-secondary:active { box-shadow: 0 2px #222230, 0 3px #0a0e1a; }
 
+/* Intro already played this session (set by js/intro-once.js): never show it. */
+.intro-seen #intro-video { display: none; }
+
 /* Pixel-art icon that inherits the button text color (so it turns gold on hover too). */
 .btn-icon {
   width: 1.1em;

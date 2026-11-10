@@ -290,10 +290,18 @@ loop();
 const bestRiels = localStorage.getItem('bestRiels');
 if(bestRiels) document.getElementById('best-riels').textContent = bestRiels + ' KHR';
 
-// Intro video: play once and remove when finished. No skip.
+// Intro video: play once per session (when the game is first opened) and remove
+// when finished. No skip. Coming back to the main menu goes straight to the title.
 (function(){
   const vid = document.getElementById('intro-video');
   if (!vid) return;
+  if (document.documentElement.classList.contains('intro-seen')) {
+    // Already played this session: drop the element so it stops loading/playing.
+    vid.pause();
+    vid.remove();
+    return;
+  }
+  try { sessionStorage.setItem(window.RIEL_INTRO_KEY, '1'); } catch (e) {}
   // attempt autoplay (muted to maximize chance)
   const p = vid.play();
   if (p && p.catch) p.catch(()=>{});
