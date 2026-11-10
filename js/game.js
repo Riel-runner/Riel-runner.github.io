@@ -41,6 +41,12 @@ if (!campaign) {
 // A fallen campaign can't be played again (e.g. via the browser Back button).
 if (campaign.dead) window.location.replace('level-select.html');
 
+// Shop upgrades (definitions in js/upgrades.js). Old saves get migrated here.
+window.RielUpgrades.ensure(campaign);
+const ARMOR_BLOCK       = window.RielUpgrades.effect(campaign, 'armor');    // fraction of damage blocked
+const PLAYER_SPEED_MULT = window.RielUpgrades.effect(campaign, 'speed');    // move speed multiplier
+const PLAYER_SHOOT_CD   = window.RielUpgrades.effect(campaign, 'firerate'); // frames between shots
+
 // Run stats shown on the death screen / campaign details. Older saves won't
 // have these yet, so they start counting from 0 the first time they're used.
 function addStat(name, amount = 1) {
@@ -198,8 +204,7 @@ function updateLasers() {
       damagePlayer(0.5);
       // 10% max HP tick every 0.5s
       if (frameCount - laser.lastDamageFrame >= LASER_TICK_FRAMES) {
-        const dmg = player.maxHp * LASER_DAMAGE_PCT;
-        damagePlayer(dmg);
+        const dmg = damagePlayer(player.maxHp * LASER_DAMAGE_PCT); // after armor
         spawnDmgNumber(player.x, player.y - 12, dmg, '#e74c3c');
         laser.lastDamageFrame = frameCount;
       }
@@ -254,11 +259,11 @@ function updatePlayer() {
   // Horizontal
   let moving = false;
   if (keys['ArrowLeft']) {
-    player.vx = -MOVE_SPEED * (player.speedMult || 1);
+    player.vx = -MOVE_SPEED * PLAYER_SPEED_MULT * (player.speedMult || 1);
     player.facingRight = false;
     moving = true;
   } else if (keys['ArrowRight']) {
-    player.vx = MOVE_SPEED * (player.speedMult || 1);
+    player.vx = MOVE_SPEED * PLAYER_SPEED_MULT * (player.speedMult || 1);
     player.facingRight = true;
     moving = true;
   } else {
@@ -354,7 +359,7 @@ function updatePlayer() {
   const wantShoot = keys['Space'] || mouseDown;
   if (wantShoot && player.shootTimer <= 0) {
     firePlayerBullet();
-    player.shootTimer = SHOOT_COOLDOWN;
+    player.shootTimer = PLAYER_SHOOT_CD; // SHOOT_COOLDOWN reduced by the Fire Rate upgrade
   }
 
   // Camera: keep player centred-ish
@@ -377,9 +382,9 @@ function updatePlayer() {
 // ═══════════════════════════════════════════════════════════════
 const bullets = [];
 
-// Ammo: infinite magazines. Reload takes 3 seconds.
+// Ammo: infinite magazines. Reload takes 3 seconds, less with the Reload Speed upgrade.
 const MAG_SIZE      = 20;
-const RELOAD_FRAMES = 3 * 60; // 3s at 60fps
+const RELOAD_FRAMES = window.RielUpgrades.effect(campaign, 'reload'); // frames (180 = 3s at 60fps)
 const droppedMags   = [];     // empty magazines falling out during reload (visual only)
 
 function startReload() {
@@ -841,7 +846,6 @@ function killNPC(n) {
   if (n.isBoss) {
     campaign.bossesBeaten = (campaign.bossesBeaten || 0) + 1;
     campaign.npcCount = (campaign.npcCount || 5) + 2;      // +2 NPCs per boss beaten
-    campaign.upgradeCost = (campaign.upgradeCost || 4) + 5; // +5 upgrade cost
     // Random max HP bonus between 5 and 10
     const hpBonus = Math.floor(Math.random() * 6) + 5;
     campaign.maxHp = (campaign.maxHp || player.maxHp) + hpBonus;
@@ -910,7 +914,7 @@ function goToShop() {
   // Sync campaign state
   applyLevelClearRewards();
   campaign.gunDamage  = player.gunDamage;
-  // upgradeCost already tracked in campaign
+  // upgrade levels/prices live in campaign.upgrades (see js/upgrades.js)
   localStorage.setItem('activeCampaign', JSON.stringify(campaign));
   // Sync best riels
   const best = parseInt(localStorage.getItem('bestRiels') || '0');
@@ -926,14 +930,17 @@ function goToVictory() {
 // ═══════════════════════════════════════════════════════════════
 //  PLAYER DAMAGE
 // ═══════════════════════════════════════════════════════════════
+// Returns the damage actually taken (after the Armor upgrade).
 function damagePlayer(amount, isTick) {
-  if (player.dead) return;
+  if (player.dead) return 0;
+  amount *= 1 - ARMOR_BLOCK;
   player.hp -= amount;
   player.hitFlash = 20;
   if (player.hp <= 0) {
     player.hp = 0;
     killPlayer();
   }
+  return amount;
 }
 
 // ═══════════════════════════════════════════════════════════════

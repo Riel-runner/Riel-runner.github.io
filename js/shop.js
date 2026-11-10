@@ -13,63 +13,75 @@ if (!campaign) {
   };
 }
 
-// ─── PIXEL GUN DRAWING ───────────────────────────────────────────────
-const gunCanvas = document.getElementById('gun-canvas');
-const gctx = gunCanvas.getContext('2d');
-gctx.imageSmoothingEnabled = false;
-const GS = 4;
+const UPG = window.RielUpgrades;
+UPG.ensure(campaign); // migrate older saves (gun upgrades only) to per-upgrade levels
 
-function drawGun(upgradeLevel) {
-  gctx.clearRect(0, 0, gunCanvas.width, gunCanvas.height);
-  const base   = '#888870';
-  const barrel = '#ccccaa';
-  const grip   = '#3d2b1f';
-  const accent = upgradeLevel > 0 ? '#f5c400' : '#444450';
-  const glow   = upgradeLevel > 3 ? '#2ecc71' : (upgradeLevel > 0 ? '#f5c400' : null);
+// ─── PIXEL ICONS (8x8; '#' = main colour, '+' = shade) ───────────────
+const ICONS = {
+  damage:   { main: '#f5c400', shade: '#888870', map: [
+    '........', '#######+', '######..', '##.#....', '##......', '##......', '........', '........'] },
+  armor:    { main: '#9fb4d8', shade: '#3b5b92', map: [
+    '.######.', '#++++++#', '#++##++#', '#+####+#', '#++##++#', '.#++++#.', '..#++#..', '...##...'] },
+  speed:    { main: '#2ecc71', shade: '#1a7a40', map: [
+    '....##..', '...##...', '..##....', '.######.', '....##..', '...##...', '..##....', '.#......'] },
+  maxhp:    { main: '#e74c3c', shade: '#8e1a10', map: [
+    '.##..##.', '#+######', '#+######', '########', '.######.', '..####..', '...##...', '........'] },
+  firerate: { main: '#f5c400', shade: '#e67e22', map: [
+    '........', '##.##.##', '++.++.++', '++.++.++', '++.++.++', '++.++.++', '........', '........'] },
+  reload:   { main: '#5dade2', shade: '#21618c', map: [
+    '..####..', '.#....#.', '#......#', '#....###', '#.....#.', '.#......', '..####..', '........'] },
+};
 
-  function gp(x, y, c) {
-    gctx.fillStyle = c;
-    gctx.fillRect(x * GS, y * GS, GS, GS);
-  }
-
-  // Handle / grip
-  gp(1,3,grip); gp(1,4,grip); gp(2,3,grip); gp(2,4,grip);
-  gp(1,5,grip); gp(2,5,grip);
-
-  // Body
-  gp(2,2,base); gp(3,2,base); gp(4,2,base);
-  gp(2,3,base); gp(3,3,base); gp(4,3,base); gp(5,3,base);
-
-  // Barrel
-  gp(5,2,barrel); gp(6,2,barrel); gp(7,2,barrel);
-  gp(8,2,barrel); gp(9,2,barrel); gp(10,2,barrel);
-  gp(11,2,barrel); gp(12,2,barrel);
-
-  // Accent stripe (grows with upgrades)
-  if(upgradeLevel > 0) {
-    const stripeLen = Math.min(upgradeLevel + 1, 8);
-    for(let i = 0; i < stripeLen; i++) gp(5 + i, 1, accent);
-  }
-
-  // Glow tip
-  if(glow) {
-    gctx.fillStyle = glow + '66';
-    gctx.fillRect(12 * GS, 0, GS * 2, GS * 4);
-    gp(13, 2, glow);
-  }
-
-  // Trigger
-  gp(3,4,base);
-
-  // Upgrade indicator dots on body
-  if(upgradeLevel > 0) {
-    gp(3,2,accent);
-    if(upgradeLevel > 2) gp(4,2,accent);
-    if(upgradeLevel > 5) gp(5,3,accent);
-  }
+function drawIcon(canvas, key) {
+  const icon = ICONS[key];
+  const ctx = canvas.getContext('2d');
+  const px = canvas.width / 8;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  icon.map.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === '.') return;
+    ctx.fillStyle = ch === '#' ? icon.main : icon.shade;
+    ctx.fillRect(x * px, y * px, px, px);
+  }));
 }
 
 // ─── RENDER UI ───────────────────────────────────────────────────────
+const listEl = document.getElementById('upgrade-list');
+
+// Build one card per upgrade once; render() just updates them.
+const cards = {};
+UPG.LIST.forEach(u => {
+  const card = document.createElement('div');
+  card.className = 'upg-card';
+  card.innerHTML = `
+    <div class="upg-head">
+      <canvas class="upg-icon" width="32" height="32"></canvas>
+      <div class="upg-title">
+        <div class="item-name">${u.name}</div>
+        <div class="upg-level"></div>
+      </div>
+    </div>
+    <div class="item-desc">${u.desc}</div>
+    <div class="dmg-preview">
+      <span class="dmg-current"></span>
+      <span class="dmg-arrow">&#9658;</span>
+      <span class="dmg-next"></span>
+    </div>
+    <div class="upgrade-pips"></div>
+    <div class="upg-foot">
+      <div class="upg-cost"><span class="cost-amount"></span> <span class="cost-unit">KHR</span></div>
+      <button class="btn-buy" data-key="${u.key}">BUY</button>
+    </div>`;
+  drawIcon(card.querySelector('.upg-icon'), u.key);
+  card.querySelector('.btn-buy').addEventListener('click', () => buyUpgrade(u.key));
+  listEl.appendChild(card);
+  cards[u.key] = card;
+});
+
+// Current (step 0) or next-level (step 1) value text for an upgrade card.
+function previewText(u, lvl, step) {
+  return u.live ? u.live(campaign, step) : u.format(u.value(lvl + step));
+}
+
 function render() {
   document.getElementById('level-display').textContent = campaign.level;
   document.getElementById('riels-display').textContent = campaign.riels;
@@ -77,48 +89,51 @@ function render() {
   // Lives only refill after boss levels now, so show lost ones as empty hearts.
   const lives = Math.max(0, Math.min(3, campaign.lives));
   document.getElementById('lives-display').innerHTML = '&#9829;'.repeat(lives) + '&#9825;'.repeat(3 - lives);
-  document.getElementById('upgrades-display').textContent = campaign.upgradeCount;
+  const totalLevels = UPG.LIST.reduce((sum, u) => sum + UPG.level(campaign, u.key), 0);
+  document.getElementById('upgrades-display').textContent = totalLevels + ' / ' + UPG.LIST.length * UPG.MAX_LEVEL;
 
-  const cost = campaign.upgradeCost;
-  const canAfford = campaign.riels >= cost;
+  UPG.LIST.forEach(u => {
+    const card  = cards[u.key];
+    const lvl   = UPG.level(campaign, u.key);
+    const maxed = lvl >= UPG.MAX_LEVEL;
+    const cost  = UPG.cost(u.key, lvl);
+    const canAfford = !maxed && campaign.riels >= cost;
 
-  document.getElementById('dmg-current').textContent = campaign.gunDamage + ' DMG';
-  document.getElementById('dmg-next').textContent = (campaign.gunDamage + 2) + ' DMG';
-  document.getElementById('cost-display').textContent = cost;
+    card.className = 'upg-card ' + (maxed ? 'maxed' : canAfford ? 'affordable' : 'cant-afford');
+    card.querySelector('.upg-level').textContent = maxed ? 'MAX LEVEL' : 'LV ' + lvl + ' / ' + UPG.MAX_LEVEL;
+    card.querySelector('.dmg-current').textContent = previewText(u, lvl, 0);
+    card.querySelector('.dmg-arrow').hidden = maxed;
+    card.querySelector('.dmg-next').textContent = maxed ? '' : previewText(u, lvl, 1);
+    card.querySelector('.upgrade-pips').innerHTML =
+      Array.from({ length: UPG.MAX_LEVEL }, (_, i) => `<div class="pip${i < lvl ? ' filled' : ''}"></div>`).join('');
+    card.querySelector('.upg-cost').hidden = maxed;
+    card.querySelector('.cost-amount').textContent = cost;
 
-  const btn = document.getElementById('btn-buy');
-  const card = document.getElementById('item-card');
-
-  btn.disabled = !canAfford;
-  card.className = 'item-card ' + (canAfford ? 'affordable' : 'cant-afford');
-
-  // Upgrade pips (show last 20 upgrades max)
-  const pips = document.getElementById('upgrade-pips');
-  pips.innerHTML = '';
-  const shown = Math.min(campaign.upgradeCount, 20);
-  for(let i = 0; i < 20; i++) {
-    const pip = document.createElement('div');
-    pip.className = 'pip' + (i < shown ? ' filled' : '');
-    pips.appendChild(pip);
-  }
-
-  drawGun(campaign.upgradeCount);
+    const btn = card.querySelector('.btn-buy');
+    btn.disabled = !canAfford;
+    btn.classList.toggle('maxed-btn', maxed);
+    btn.textContent = maxed ? 'MAXED' : 'BUY';
+  });
 }
 
 // ─── BUY UPGRADE ─────────────────────────────────────────────────────
-function buyUpgrade() {
+function buyUpgrade(key) {
+  const u = UPG.BY_KEY[key];
+  const lvl = UPG.level(campaign, key);
+  if (lvl >= UPG.MAX_LEVEL) { showToast(u.name + ' IS MAXED!'); return; }
+  const cost = UPG.cost(key, lvl);
+  if (campaign.riels < cost) { showToast('NOT ENOUGH RIELS!'); return; }
+
   const upgradeSound = new Audio('assets/audio/sfx/upgrade.ogg');
   upgradeSound.volume = 0.55 * window.RielVolume.sfx();
   upgradeSound.play().catch(() => {});
-  if(campaign.riels < campaign.upgradeCost) {
-    showToast('NOT ENOUGH RIELS!');
-    return;
-  }
 
-  campaign.riels       -= campaign.upgradeCost;
-  campaign.gunDamage   += 2;
-  campaign.upgradeCount++;
-  campaign.upgradeCost += 2; // base level increment (boss increments handled in game.html)
+  campaign.riels -= cost;
+  campaign.upgrades[key] = lvl + 1;
+  campaign.upgradeCount = (campaign.upgradeCount || 0) + 1; // total purchases (shown in stats)
+  // Damage and Max HP are stored directly on the campaign; the rest are read from levels in game.js.
+  if (key === 'damage') campaign.gunDamage += 2;
+  if (key === 'maxhp')  { campaign.maxHp += 15; campaign.hp = campaign.maxHp; }
 
   // Flash
   const flash = document.getElementById('purchase-flash');
@@ -127,7 +142,8 @@ function buyUpgrade() {
 
   saveCampaign();
   render();
-  showToast('+2 DAMAGE! GUN NOW ' + campaign.gunDamage + ' DMG');
+  const now = previewText(u, lvl + 1, 0);
+  showToast(lvl + 1 >= UPG.MAX_LEVEL ? u.name + ' MAXED! ' + now : u.name + ' UP! ' + now);
 }
 
 // ─── SAVE & CONTINUE ─────────────────────────────────────────────────
