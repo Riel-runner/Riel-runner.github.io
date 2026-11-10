@@ -39,6 +39,7 @@ function renderSlots() {
 
   // Existing campaign slots
   campaigns.forEach((c, i) => {
+    if (c.dead) { grid.appendChild(renderFallenSlot(c, i)); return; }
     const progress = Math.round((c.level - 1) / 100 * 100);
     const card = document.createElement('div');
     card.className = 'slot-card';
@@ -83,6 +84,44 @@ function renderSlots() {
   }
 }
 
+// A campaign that lost all 3 lives: grayed out, can't be played.
+// Only DETAILS (how far it got) and DELETE are available.
+function renderFallenSlot(c, i) {
+  const progress = Math.round((c.level - 1) / 100 * 100);
+  const card = document.createElement('div');
+  card.className = 'slot-card fallen';
+  card.innerHTML = `
+    <div class="slot-number">SLOT ${i+1}</div>
+    <div class="slot-fallen-tag">FALLEN</div>
+    <div class="slot-fallen-body">
+      <div class="slot-name">${escHtml(c.name)}</div>
+      <div class="slot-stats">
+        <div class="slot-stat">FELL ON LEVEL <span>${c.level} / 100</span></div>
+        <div class="slot-stat">ENEMIES KILLED <span>${c.enemiesKilled ?? '—'}</span></div>
+        <div class="slot-stat">BOSSES BEATEN <span>${c.bossesBeaten || 0} / 10</span></div>
+      </div>
+      <div class="slot-progress-bar">
+        <div class="slot-progress-fill" style="width:${progress}%"></div>
+      </div>
+      <div class="slot-progress-label">${progress}% COMPLETE</div>
+    </div>
+    <div class="slot-fallen-actions">
+      <button class="slot-action slot-details">DETAILS</button>
+      <button class="slot-action slot-action-delete">&#10006; DELETE</button>
+    </div>
+  `;
+  // Clicking the card (or DETAILS) shows details; it never starts the game.
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.slot-action-delete')) return;
+    openDetailsModal(i);
+  });
+  card.querySelector('.slot-action-delete').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openDeleteModal(i);
+  });
+  return card;
+}
+
 function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -92,6 +131,7 @@ function loadCampaign(idx) {
   const campaigns = getCampaigns();
   const c = campaigns[idx];
   if(!c) return;
+  if(c.dead) { openDetailsModal(idx); return; } // fallen campaigns can't be played
 
   // Update last played
   c.lastPlayed = Date.now();
@@ -189,8 +229,38 @@ document.getElementById('delete-confirm').addEventListener('click', () => {
   showToast(name + ' DELETED');
 });
 
+// ─── FALLEN CAMPAIGN DETAILS MODAL ───────────────────────────────────
+const detailsModal = document.getElementById('details-modal');
+let detailsIdx = null;
+
+function openDetailsModal(idx) {
+  const c = getCampaigns()[idx];
+  if (!c) return;
+  detailsIdx = idx;
+  document.getElementById('details-name').textContent = c.name;
+  document.getElementById('details-summary').innerHTML = window.RielRunSummary.render(c);
+  detailsModal.classList.add('active');
+}
+
+function closeDetailsModal() {
+  detailsModal.classList.remove('active');
+  detailsIdx = null;
+}
+
+document.getElementById('details-close').addEventListener('click', closeDetailsModal);
+document.getElementById('details-delete').addEventListener('click', () => {
+  const idx = detailsIdx;
+  closeDetailsModal();
+  if (idx !== null) openDeleteModal(idx);
+});
+
+// Escape closes whichever popup is open.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && detailsModal.classList.contains('active')) closeDetailsModal();
+});
+
 // Close modals on backdrop click
-[newModal, deleteModal].forEach(m => {
+[newModal, deleteModal, detailsModal].forEach(m => {
   m.addEventListener('click', (e) => {
     if(e.target === m) {
       m.classList.remove('active');

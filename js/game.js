@@ -34,6 +34,14 @@ if (!campaign) {
     upgradeCost: 4, npcCount: 5, bossesBeaten: 0, name: 'DEBUG'
   };
 }
+// A fallen campaign can't be played again (e.g. via the browser Back button).
+if (campaign.dead) window.location.replace('level-select.html');
+
+// Run stats shown on the death screen / campaign details. Older saves won't
+// have these yet, so they start counting from 0 the first time they're used.
+function addStat(name, amount = 1) {
+  campaign[name] = (campaign[name] || 0) + amount;
+}
 
 let settings;
 try { settings = JSON.parse(localStorage.getItem('rielrunner_settings')); } catch {}
@@ -486,6 +494,7 @@ function firePlayerBullet() {
   }
 
   bullets.push({ x: startX, y: startY, dx, dy, alive: true });
+  addStat('shotsFired');
   player.gunFlash = 5;
 
   // Gunshot sound
@@ -805,6 +814,7 @@ function updateNPCs() {
         b.y > n.y && b.y < n.y + n.h;
       if (hit) {
         bullets.splice(bi, 1);
+        addStat('shotsHit');
         n.hp -= player.gunDamage;
         spawnDmgNumber(n.x, n.y - 4, player.gunDamage, '#f5c400');
         if (n.hp <= 0) killNPC(n);
@@ -819,6 +829,8 @@ function killNPC(n) {
   n.deadTimer = 0;
   const reward = n.rielReward || 2;
   campaign.riels += reward;
+  addStat('enemiesKilled');
+  addStat('rielsEarned', reward);
   spawnRielParticles(n.x, n.y);
   if (settings.damageNumbers) {
     dmgNumbers.push({ x: n.x, y: n.y - 14, amount: reward + ' KHR', color: '#2ecc71', life: 55, vy: -1.0, isText: true });
@@ -1060,8 +1072,8 @@ function killPlayer() {
   player.respawnTimer = 120; // 2 seconds
 
   if (player.lives <= 0) {
-    // Zone reset
-    handleZoneFail();
+    // Out of lives: the campaign is over for good.
+    handleCampaignOver();
   }
 }
 
@@ -1080,18 +1092,48 @@ function respawnPlayer() {
   player.hitFlash     = 0;
 }
 
-function handleZoneFail() {
-  // Find start of current zone (zones are 1-10, 11-20, etc.)
-  const zoneStart = Math.floor((campaign.level - 1) / 10) * 10 + 1;
-  campaign.level = zoneStart;
-  campaign.lives = 3;
-  campaign.hp    = campaign.maxHp;
+function handleCampaignOver() {
+  // Mark the campaign as fallen (permanent) and record where it ended.
+  campaign.dead      = true;
+  campaign.diedAt    = Date.now();
+  campaign.lives     = 0;
+  campaign.hp        = 0;
+  campaign.maxHp     = player.maxHp;
+  campaign.gunDamage = player.gunDamage;
+
   const best = parseInt(localStorage.getItem('bestRiels') || '0');
   if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
+
+  // Save into the campaign list too, so level select shows it as fallen.
+  try {
+    const idx = parseInt(localStorage.getItem('activeCampaignIdx'));
+    const all = JSON.parse(localStorage.getItem('rielrunner_campaigns')) || [];
+    if (!isNaN(idx) && all[idx]) {
+      all[idx] = { ...all[idx], ...campaign, lastPlayed: Date.now() };
+      localStorage.setItem('rielrunner_campaigns', JSON.stringify(all));
+    }
+  } catch {}
   localStorage.setItem('activeCampaign', JSON.stringify(campaign));
-  // Show game over screen then redirect
+
+  // Dim the game, then the death screen appears (see drawOverlay).
   gameState = 'game_over';
   stateTimer = 0;
+}
+
+// Fill in and reveal the death screen (HTML panel in game.html).
+let deathScreenShown = false;
+function showDeathScreen() {
+  if (deathScreenShown) return;
+  deathScreenShown = true;
+  document.getElementById('death-campaign').textContent = campaign.name || 'UNKNOWN';
+  document.getElementById('death-summary').innerHTML = window.RielRunSummary.render(campaign);
+  const touch = document.getElementById('touch-overlay');
+  if (touch) touch.style.display = 'none';
+  const screen = document.getElementById('death-screen');
+  screen.hidden = false;
+  void screen.offsetWidth;          // apply the un-hidden state first so the fade-in runs
+  screen.classList.add('show');
+  document.getElementById('death-title-btn').focus({ preventScroll: true });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1618,16 +1660,8 @@ function drawOverlay() {
     if (stateTimer > 120) proceedToShop();
 
   } else if (gameState === 'game_over') {
-    drawBanner('GAME OVER', '#c0392b', cx, cy);
-    if (stateTimer > 35) {
-      ctx.font      = '7px "Press Start 2P", monospace';
-      ctx.fillStyle = '#888870';
-      ctx.fillText('RETURNING TO ZONE START...', cx, cy + 50);
-    }
-    if (stateTimer > 160) {
-      localStorage.setItem('activeCampaign', JSON.stringify(campaign));
-      window.location.href = 'level-select.html';
-    }
+    // Brief pause on the dimmed game (skull visible), then the death screen.
+    if (stateTimer > 60) showDeathScreen();
 
   } else if (gameState === 'you_win') {
     drawBanner('YOU BEAT THE GAME!', '#f5c400', cx, cy - 20);
@@ -1822,9 +1856,16 @@ generatePowerups();
 // ═══════════════════════════════════════════════════════════════
 //  MAIN LOOP
 // ═══════════════════════════════════════════════════════════════
+let lastLoopTime = performance.now();
 function loop() {
   requestAnimationFrame(loop);
   frameCount++;
+
+  // Real time played (not frames, so high-refresh screens don't inflate it).
+  // Capped per frame so time in a background tab doesn't count.
+  const now = performance.now();
+  if (gameState === 'playing') addStat('playTimeMs', Math.min(now - lastLoopTime, 100));
+  lastLoopTime = now;
 
   if (gameState === 'playing') {
     updatePlayer();

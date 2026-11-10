@@ -6,6 +6,7 @@
 <title>Riel Runner — Select Campaign</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/level-select.css">
+<link rel="stylesheet" href="css/run-summary.css">
 <script src="js/volume.js"></script>
 </head>
 <body>
@@ -62,9 +63,23 @@
   </div>
 </div>
 
+<!-- Fallen Campaign Details Modal (summary filled by js/run-summary.js) -->
+<div class="modal-backdrop" id="details-modal">
+  <div class="modal modal-details">
+    <div class="modal-title details-title">FALLEN CAMPAIGN</div>
+    <div class="details-name" id="details-name"></div>
+    <div class="details-summary" id="details-summary"></div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-cancel" id="details-close">CLOSE</button>
+      <button class="modal-btn modal-btn-delete" id="details-delete">DELETE</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div class="version">V6 RIEL RUNNER</div>
 
+<script src="js/run-summary.js"></script>
 <script src="js/level-select.js"></script>
   <script src="js/music-continue.js"></script>
   <script src="js/click-sounds.js"></script>

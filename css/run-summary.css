@@ -1,0 +1,81 @@
+/* Campaign summary: 10-zone progress bar + stats grid (built by js/run-summary.js).
+   Used on the death screen and the fallen-campaign details popup. */
+
+.rs-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rs-progress-head,
+.rs-progress-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  color: #888870;
+}
+
+.rs-level {
+  font-size: 16px;
+  color: #f5c400;
+}
+.rs-level small { font-size: 8px; color: #888870; }
+
+/* Track: one segment per zone; a boss ends each zone. */
+.rs-track {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 3px;
+}
+
+.rs-zone {
+  position: relative;
+  height: 12px;
+  background: #1e2440;
+  border: 1px solid #2a2e44;
+}
+
+.rs-zone-fill {
+  height: 100%;
+  background: #f5c400;
+}
+
+.rs-zone.rs-cleared { border-color: #b8920a; }
+.rs-zone.rs-death   { border-color: #c0392b; }
+
+/* Red tick on the exact level where the campaign ended. */
+.rs-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  margin-left: -1px;
+  background: #c0392b;
+  box-shadow: 0 0 6px rgba(192, 57, 43, 0.8);
+}
+
+.rs-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+}
+
+.rs-stat-label {
+  font-size: 6px;
+  letter-spacing: 0.12em;
+  color: #555566;
+  margin-bottom: 5px;
+}
+
+.rs-stat-value {
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: #e8e8d0;
+}
+
+@media (max-width: 380px) {
+  .rs-stats { gap: 10px 12px; }
+  .rs-stat-value { font-size: 8px; }
+}
