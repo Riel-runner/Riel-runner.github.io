@@ -1,0 +1,374 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background-color: #0a0e1a;
+  font-family: 'Press Start 2P', monospace;
+  color: #e8e8d0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+/* Pixel grid bg */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(245,196,0,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245,196,0,0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* CRT scanlines */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0,0,0,0.12) 2px, rgba(0,0,0,0.12) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
+
+.page {
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  max-width: 780px;
+  padding: 36px 24px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* Header */
+.back-btn {
+  align-self: flex-start;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: #888870;
+  text-decoration: none;
+  letter-spacing: 0.1em;
+  margin-bottom: 28px;
+  transition: color 0.1s;
+}
+.back-btn:hover { color: #f5c400; }
+
+.page-title {
+  font-size: clamp(12px, 3vw, 18px);
+  color: #f5c400;
+  letter-spacing: 0.15em;
+  text-shadow: 3px 3px #b8920a, 5px 5px #3d2b1f;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+.page-sub {
+  font-size: 7px;
+  color: #555566;
+  letter-spacing: 0.2em;
+  margin-bottom: 36px;
+  text-align: center;
+}
+
+/* Pixel divider */
+.divider {
+  width: 100%;
+  height: 3px;
+  background: repeating-linear-gradient(
+    90deg, #f5c400 0px, #f5c400 8px,
+    transparent 8px, transparent 16px
+  );
+  opacity: 0.25;
+  margin-bottom: 32px;
+}
+
+/* Campaign slots grid */
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  width: 100%;
+  margin-bottom: 28px;
+}
+
+/* Individual slot card */
+.slot-card {
+  background: #0f1526;
+  border: 3px solid #1e2440;
+  padding: 20px 16px;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.1s, transform 0.08s;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.slot-card:hover {
+  border-color: #f5c400;
+  transform: translateY(-2px);
+}
+
+.slot-card:active { transform: translateY(1px); }
+
+.slot-card.empty {
+  border-style: dashed;
+  border-color: #2a2e44;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+.slot-card.empty:hover { border-color: #f5c400; }
+
+.slot-number {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 7px;
+  color: #2a2e44;
+  letter-spacing: 0.1em;
+}
+
+.slot-name {
+  font-size: clamp(8px, 2vw, 10px);
+  color: #e8e8d0;
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+.slot-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.slot-stat {
+  font-size: 7px;
+  color: #555566;
+  letter-spacing: 0.1em;
+  display: flex;
+  justify-content: space-between;
+}
+
+.slot-stat span { color: #f5c400; }
+
+.slot-progress-bar {
+  width: 100%;
+  height: 5px;
+  background: #1e2440;
+  margin-top: 10px;
+  position: relative;
+}
+
+.slot-progress-fill {
+  height: 100%;
+  background: #f5c400;
+  transition: width 0.3s;
+}
+
+.slot-progress-label {
+  font-size: 6px;
+  color: #888870;
+  margin-top: 4px;
+  letter-spacing: 0.1em;
+}
+
+/* Empty slot */
+.empty-icon {
+  font-size: 24px;
+  color: #2a2e44;
+  display: block;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.empty-label {
+  font-size: 8px;
+  color: #2a2e44;
+  letter-spacing: 0.1em;
+}
+
+.slot-card.empty:hover .empty-label,
+.slot-card.empty:hover .empty-icon { color: #f5c400; }
+
+/* Delete button on slot */
+.slot-delete {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  font-size: 6px;
+  color: #c0392b;
+  background: none;
+  border: 1px solid #c0392b;
+  font-family: 'Press Start 2P', monospace;
+  padding: 3px 5px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.slot-card:hover .slot-delete { opacity: 1; }
+.slot-delete:hover { background: #c0392b; color: #fff; }
+
+/* New campaign modal */
+.modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(10,14,26,0.9);
+  z-index: 50;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-backdrop.active { display: flex; }
+
+.modal {
+  background: #0f1526;
+  border: 3px solid #f5c400;
+  padding: 32px 28px;
+  width: 90%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 6px 6px #b8920a, 10px 10px #3d2b1f;
+  position: relative;
+  z-index: 51;
+}
+
+.modal-title {
+  font-size: 11px;
+  color: #f5c400;
+  letter-spacing: 0.15em;
+  text-align: center;
+}
+
+.modal-label {
+  font-size: 7px;
+  color: #888870;
+  letter-spacing: 0.15em;
+  margin-bottom: 8px;
+}
+
+.modal-input {
+  width: 100%;
+  background: #0a0e1a;
+  border: 2px solid #2a2e44;
+  color: #e8e8d0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  padding: 12px 10px;
+  letter-spacing: 0.1em;
+  outline: none;
+  transition: border-color 0.1s;
+}
+
+.modal-input:focus { border-color: #f5c400; }
+
+.modal-input::placeholder { color: #333344; }
+
+.modal-char-count {
+  font-size: 6px;
+  color: #333344;
+  text-align: right;
+  margin-top: 4px;
+  letter-spacing: 0.1em;
+}
+
+.modal-btns {
+  display: flex;
+  gap: 12px;
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 12px 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  border: none;
+  text-align: center;
+}
+
+.modal-btn-confirm {
+  background: #f5c400;
+  color: #0a0e1a;
+  box-shadow: 0 4px #b8920a;
+}
+
+.modal-btn-confirm:hover { background: #ffe033; }
+.modal-btn-confirm:active { transform: translateY(3px); box-shadow: 0 1px #b8920a; }
+
+.modal-btn-cancel {
+  background: transparent;
+  color: #888870;
+  border: 2px solid #2a2e44;
+}
+
+.modal-btn-cancel:hover { border-color: #888870; color: #e8e8d0; }
+
+/* Delete confirm modal */
+.delete-modal-text {
+  font-size: 8px;
+  color: #e8e8d0;
+  letter-spacing: 0.08em;
+  line-height: 2;
+  text-align: center;
+}
+
+.delete-modal-name {
+  color: #f5c400;
+}
+
+.modal-btn-delete {
+  background: #c0392b;
+  color: #fff;
+  box-shadow: 0 4px #8e1a10;
+}
+
+.modal-btn-delete:hover { background: #e74c3c; }
+.modal-btn-delete:active { transform: translateY(3px); box-shadow: 0 1px #8e1a10; }
+
+/* Toast notification */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(60px);
+  background: #1e2440;
+  border: 2px solid #f5c400;
+  color: #f5c400;
+  font-size: 8px;
+  padding: 10px 18px;
+  letter-spacing: 0.1em;
+  z-index: 200;
+  transition: transform 0.25s;
+  white-space: nowrap;
+}
+
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+.version {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  font-size: 6px;
+  color: #222233;
+  z-index: 5;
+}

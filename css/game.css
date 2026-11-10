@@ -1,0 +1,119 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0e1a;
+  font-family: 'Press Start 2P', monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#game-canvas {
+  display: block;
+  image-rendering: pixelated;
+  cursor: crosshair;
+}
+
+/* CRT overlay */
+#crt {
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0,0,0,0.10) 2px, rgba(0,0,0,0.10) 4px
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ═══ TOUCH CONTROLS ═══ */
+#touch-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#touch-overlay.active { display: block; }
+
+.t-btn {
+  position: absolute;
+  pointer-events: all;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Press Start 2P', monospace;
+  color: rgba(232,232,208,0.85);
+  background: rgba(15,21,38,0.55);
+  border: 2px solid rgba(245,196,0,0.35);
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.08s, border-color 0.08s;
+}
+
+.t-btn.pressed {
+  background: rgba(245,196,0,0.25);
+  border-color: rgba(245,196,0,0.8);
+}
+
+/* Left side — movement */
+#btn-left  { left: 14px;  bottom: 130px; width: 72px; height: 72px; font-size: 18px; }
+#btn-right { left: 100px; bottom: 130px; width: 72px; height: 72px; font-size: 18px; }
+#btn-jump  { left: 14px;  bottom: 214px; width: 72px; height: 72px; font-size: 18px; }
+
+/* Right side — shoot (big circle) */
+#btn-shoot {
+  right: 24px;
+  bottom: 100px;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  border: 3px solid rgba(192,57,43,0.6);
+  background: rgba(192,57,43,0.22);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+#btn-shoot.pressed {
+  background: rgba(192,57,43,0.55);
+  border-color: rgba(231,76,60,0.95);
+}
+
+/* Top right — dash + pause */
+#btn-dash {
+  right: 90px;
+  top: 14px;
+  width: 60px;
+  height: 44px;
+  font-size: 7px;
+  letter-spacing: 0.05em;
+  border-color: rgba(34,85,204,0.5);
+  background: rgba(34,85,204,0.2);
+}
+#btn-dash.pressed {
+  background: rgba(34,85,204,0.5);
+  border-color: rgba(34,85,204,0.9);
+}
+#btn-dash.cooldown {
+  opacity: 0.4;
+  border-color: rgba(100,100,120,0.4);
+}
+
+#btn-pause {
+  right: 14px;
+  top: 14px;
+  width: 60px;
+  height: 44px;
+  font-size: 13px;
+  border-color: rgba(245,196,0,0.4);
+}
+#btn-pause.pressed {
+  background: rgba(245,196,0,0.25);
+  border-color: rgba(245,196,0,0.9);
+}
