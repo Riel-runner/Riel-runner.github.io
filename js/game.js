@@ -89,7 +89,7 @@ const PIXEL          = 3;            // sprite pixel scale
 const DASH_DISTANCE  = 400;          // px — half screen dash
 const DASH_COOLDOWN  = 600;          // frames — 10 seconds at 60fps
 const DASH_DURATION  = 10;           // frames the dash lasts
-const GAME_VERSION   = 'V6';
+const GAME_VERSION   = 'V7';
 
 // ═══════════════════════════════════════════════════════════════
 //  WORLD / CAMERA
