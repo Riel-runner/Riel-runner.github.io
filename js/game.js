@@ -137,12 +137,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyR' && gameState === 'playing') startReload();
   if (e.code === 'Escape') {
     e.preventDefault();
-    if (gameState === 'playing') {
-      gameState = 'paused';
-      pauseMenuIndex = 0;
-    } else if (gameState === 'paused') {
-      gameState = 'playing';
-    }
+    togglePause();
   }
 });
 window.addEventListener('keyup',  e => {
@@ -1430,6 +1425,48 @@ const PAUSE_ITEMS = [
   }},
 ];
 
+// Pause/unpause (Escape key and the on-screen pause button).
+function togglePause() {
+  if (gameState === 'playing')     { gameState = 'paused'; pauseMenuIndex = 0; }
+  else if (gameState === 'paused') { gameState = 'playing'; }
+}
+
+// Which pause menu item (if any) is at canvas point (x, y)? Mirrors drawPauseMenu's layout.
+function pauseItemAt(x, y) {
+  const panelW = 380, panelH = 320;
+  const panelX = BASE_W / 2 - panelW / 2;
+  const panelY = BASE_H / 2 - panelH / 2;
+  for (let i = 0; i < PAUSE_ITEMS.length; i++) {
+    const itemY = panelY + 188 + i * 38;
+    if (x >= panelX + 16 && x <= panelX + panelW - 16 && y >= itemY - 14 && y <= itemY + 10) return i;
+  }
+  return -1;
+}
+
+function canvasPoint(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: (e.clientX - rect.left) * BASE_W / rect.width, y: (e.clientY - rect.top) * BASE_H / rect.height };
+}
+
+// Click or tap a pause menu item to choose it; hovering with a mouse highlights it.
+canvas.addEventListener('pointerdown', e => {
+  if (gameState !== 'paused') return;
+  const p = canvasPoint(e);
+  const i = pauseItemAt(p.x, p.y);
+  if (i < 0) return;
+  e.preventDefault();
+  pauseMenuIndex = i;
+  PAUSE_ITEMS[i].action();
+});
+canvas.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  if (gameState !== 'paused') { canvas.style.cursor = ''; return; } // back to the crosshair
+  const p = canvasPoint(e);
+  const i = pauseItemAt(p.x, p.y);
+  if (i >= 0) pauseMenuIndex = i;
+  canvas.style.cursor = i >= 0 ? 'pointer' : '';
+});
+
 // Navigate pause menu with arrow keys or W/S, confirm with Space/Enter
 window.addEventListener('keydown', e => {
   if (gameState !== 'paused') return;
@@ -1761,55 +1798,37 @@ function proceedToShop() {
 
   function setKey(code, down) { keys[code] = down; }
 
+  // Pointer events cover mouse, touch and pen with one code path. Capturing the
+  // pointer means the button still gets the "up" even if the finger/cursor slides off.
   Object.entries(BTN_KEY_MAP).forEach(([id, code]) => {
     const el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener('touchstart',  e => { e.preventDefault(); setKey(code, true);  el.classList.add('pressed');    }, { passive: false });
-    el.addEventListener('touchend',    e => { e.preventDefault(); setKey(code, false); el.classList.remove('pressed'); }, { passive: false });
-    el.addEventListener('touchcancel', e => {                     setKey(code, false); el.classList.remove('pressed'); }, { passive: false });
+    const press = e => {
+      e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch {}
+      setKey(code, true);
+      el.classList.add('pressed');
+    };
+    const release = () => { setKey(code, false); el.classList.remove('pressed'); };
+    el.addEventListener('pointerdown', press);
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('lostpointercapture', release);
   });
 
-  // Pause button
+  // Pause button: works with a mouse click as well as a tap.
   const pauseBtn = document.getElementById('btn-pause');
   if (pauseBtn) {
-    pauseBtn.addEventListener('touchstart', e => {
+    pauseBtn.addEventListener('pointerdown', e => {
       e.preventDefault();
       pauseBtn.classList.add('pressed');
-      if (gameState === 'playing')      { gameState = 'paused';  pauseMenuIndex = 0; }
-      else if (gameState === 'paused')  { gameState = 'playing'; }
-    }, { passive: false });
-    pauseBtn.addEventListener('touchend', e => { e.preventDefault(); pauseBtn.classList.remove('pressed'); }, { passive: false });
-  }
-
-  // Canvas touch — handle pause menu item taps
-  canvas.addEventListener('touchstart', e => {
-    if (gameState !== 'paused') return;
-    e.preventDefault();
-    const rect   = canvas.getBoundingClientRect();
-    const scaleX = BASE_W / rect.width;
-    const scaleY = BASE_H / rect.height;
-    const touch  = e.changedTouches[0];
-    const tx = (touch.clientX - rect.left) * scaleX;
-    const ty = (touch.clientY - rect.top)  * scaleY;
-
-    // Match pause menu item hit areas (must mirror drawPauseMenu layout)
-    const cx     = BASE_W / 2;
-    const panelW = 380, panelH = 320;
-    const panelX = cx - panelW / 2;
-    const panelY = BASE_H / 2 - panelH / 2;
-
-    PAUSE_ITEMS.forEach((item, i) => {
-      const itemY  = panelY + 188 + i * 38;
-      const hitX1  = panelX + 16;
-      const hitX2  = panelX + panelW - 16;
-      const hitY1  = itemY - 14;
-      const hitY2  = itemY + 10;
-      if (tx >= hitX1 && tx <= hitX2 && ty >= hitY1 && ty <= hitY2) {
-        pauseMenuIndex = i;
-        item.action();
-      }
+      togglePause();
     });
-  }, { passive: false });
+    const unpress = () => pauseBtn.classList.remove('pressed');
+    pauseBtn.addEventListener('pointerup', unpress);
+    pauseBtn.addEventListener('pointercancel', unpress);
+    pauseBtn.addEventListener('pointerleave', unpress);
+  }
 
   // Dash button — live cooldown countdown
   const dashBtn = document.getElementById('btn-dash');
