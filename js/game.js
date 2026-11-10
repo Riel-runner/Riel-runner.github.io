@@ -1215,6 +1215,7 @@ function updatePowerups() {
 const MAX_LIVES = 3;
 function isBossLevel() { return campaign.level % 10 === 0; }
 function applyLevelClearRewards() {
+  campaign.levelState = null; // level finished: nothing to resume (null, not delete, so saves overwrite it)
   campaign.maxHp = player.maxHp;
   campaign.hp    = player.maxHp;
   campaign.lives = isBossLevel() ? MAX_LIVES : player.lives;
@@ -1421,6 +1422,7 @@ function handleCampaignOver() {
   // Mark the campaign as fallen (permanent) and record where it ended.
   campaign.dead      = true;
   campaign.diedAt    = Date.now();
+  campaign.levelState = null;
   campaign.lives     = 0;
   campaign.hp        = 0;
   campaign.maxHp     = player.maxHp;
@@ -1740,15 +1742,9 @@ function drawPowerups() {
 
 const PAUSE_ITEMS = [
   { label: 'RESUME',        action: () => { gameState = 'playing'; } },
-  { label: 'SETTINGS',      action: () => { window.location.href = 'settings.html?returnTo=game.html'; } },
-  { label: 'QUIT TO MENU',  action: () => {
-    campaign.hp = Math.ceil(player.hp);
-    campaign.maxHp = player.maxHp;
-    campaign.lives = player.lives;
-    campaign.gunDamage = player.gunDamage;
-    localStorage.setItem('activeCampaign', JSON.stringify(campaign));
-    window.location.href = 'index.html';
-  }},
+  // Both save the whole level first, so coming back resumes exactly here.
+  { label: 'SETTINGS',      action: () => { saveLevelProgress(); window.location.href = 'settings.html?returnTo=game.html'; } },
+  { label: 'QUIT TO MENU',  action: () => { saveLevelProgress(); window.location.href = 'index.html'; } },
 ];
 
 // Pause/unpause (Escape key and the on-screen pause button).
@@ -2089,7 +2085,8 @@ function drawOverlay() {
       ctx.fillText('TOTAL RIELS: ' + campaign.riels + ' KHR', cx, cy + 44);
     }
     if (stateTimer > 220) {
-      localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+      campaign.levelState = null;
+      persistCampaign();
       window.location.href = 'index.html';
     }
   }
@@ -2238,6 +2235,71 @@ function generatePowerups() {
 generatePowerups();
 
 // ═══════════════════════════════════════════════════════════════
+//  MID-LEVEL SAVE / RESUME
+// ═══════════════════════════════════════════════════════════════
+// The whole level (player, enemies, platforms, lasers, power-ups) is saved into the
+// campaign, so quitting, closing the tab or opening Settings resumes exactly where you
+// were. Saved on quit/settings/tab close and every 5 seconds; cleared when the level
+// is cleared or the campaign falls.
+const PLAYER_SAVE_KEYS = ['x', 'y', 'vy', 'onGround', 'hp', 'maxHp', 'lives', 'gunDamage', 'bullets',
+  'reloadTimer', 'facingRight', 'dead', 'deathX', 'respawnTimer', 'dashCooldown',
+  'jumpMult', 'jumpPowerTimer', 'speedMult', 'speedPowerTimer'];
+const AUTOSAVE_FRAMES = 5 * 60;
+
+// Write the campaign to the active save and to its slot in the campaign list.
+function persistCampaign() {
+  localStorage.setItem('activeCampaign', JSON.stringify(campaign));
+  try {
+    const idx = parseInt(localStorage.getItem('activeCampaignIdx'));
+    const all = JSON.parse(localStorage.getItem('rielrunner_campaigns')) || [];
+    if (!isNaN(idx) && all[idx]) {
+      all[idx] = { ...all[idx], ...campaign, lastPlayed: Date.now() };
+      localStorage.setItem('rielrunner_campaigns', JSON.stringify(all));
+    }
+  } catch {}
+}
+
+function saveLevelProgress() {
+  if (campaign.dead || (gameState !== 'playing' && gameState !== 'paused')) return;
+  const p = {};
+  for (const k of PLAYER_SAVE_KEYS) p[k] = player[k];
+  campaign.levelState = {
+    level: campaign.level, savedAt: Date.now(), camX, player: p,
+    npcs: npcs.map(n => ({ ...n })), platforms, lasers, powerups,
+  };
+  campaign.hp = Math.ceil(player.hp);
+  campaign.maxHp = player.maxHp;
+  campaign.lives = player.lives;
+  campaign.gunDamage = player.gunDamage;
+  persistCampaign();
+}
+
+// Put a saved level back exactly as it was (paused, so the player can get ready).
+function restoreLevelState() {
+  const s = campaign.levelState;
+  if (!s || s.level !== campaign.level || !Array.isArray(s.npcs) || !s.player) return false;
+  platforms.length = 0; platforms.push(...s.platforms);
+  // Frame-based timers restart from 0 on a fresh page, so reset them.
+  lasers.length = 0;    lasers.push(...s.lasers.map(l => ({ ...l, lastDamageFrame: -LASER_TICK_FRAMES })));
+  powerups.length = 0;  powerups.push(...s.powerups);
+  npcs.length = 0;      npcs.push(...s.npcs.map(n => ({ ...n, nextDodgeRoll: 0 })));
+  Object.assign(player, s.player);
+  player.vx = 0;
+  camX = s.camX || 0;
+  gameState = 'paused';
+  pauseMenuIndex = 0;
+  // Saved during the "level complete" banner? Finish the level instead.
+  if (npcs.length && npcs.every(n => n.dead)) { gameState = 'playing'; checkLevelClear(); }
+  else showToast('PROGRESS RESTORED');
+  return true;
+}
+restoreLevelState();
+
+// Save when leaving the page (closing the tab, switching apps on mobile).
+window.addEventListener('pagehide', saveLevelProgress);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveLevelProgress(); });
+
+// ═══════════════════════════════════════════════════════════════
 //  MAIN LOOP
 // ═══════════════════════════════════════════════════════════════
 let lastLoopTime = performance.now();
@@ -2250,6 +2312,7 @@ function loop() {
   const now = performance.now();
   if (gameState === 'playing') addStat('playTimeMs', Math.min(now - lastLoopTime, 100));
   lastLoopTime = now;
+  if (gameState === 'playing' && frameCount % AUTOSAVE_FRAMES === 0) saveLevelProgress(); // backup autosave
 
   if (gameState === 'playing') {
     updatePlayer();
