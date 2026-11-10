@@ -61,7 +61,14 @@ if (!settings) settings = { autoAim: true, hpBars: true, damageNumbers: true };
 //  CONSTANTS
 // ═══════════════════════════════════════════════════════════════
 const GRAVITY        = 0.55;
-const JUMP_FORCE     = -12;
+const JUMP_FORCE     = -9.5;          // lower, more natural jump (~82px high; was -12, ~131px)
+const JUMP_HEIGHT    = (JUMP_FORCE * JUMP_FORCE) / (2 * GRAVITY); // how high a normal jump rises
+// Enemies jump a bit lower than the player (they also fall with 0.9x gravity).
+const NPC_JUMP_FORCE = -Math.sqrt((JUMP_HEIGHT - 6) * 2 * GRAVITY * 0.9);
+// Platforms are always reachable with a normal jump. The per-frame physics peaks ~5px
+// below the formula, so this leaves ~11px of real headroom at the highest platform.
+const PLATFORM_MIN_RISE = 42;
+const PLATFORM_MAX_RISE = Math.floor(JUMP_HEIGHT - 16);
 const MOVE_SPEED     = 3.5;
 const GROUND_Y       = BASE_H - 60;   // y where ground surface is
 const FLOOR_H        = 60;
@@ -176,17 +183,18 @@ function generateLasers() {
   // Spawn 2-4 lasers per level on platforms or above ground
   const laserCount = 2 + Math.floor(Math.random() * 3);
   for (let i = 0; i < laserCount; i++) {
-    let x, y;
+    let x, y, w;
     // 70% chance on a platform, 30% at ground level
     if (platforms.length > 0 && Math.random() < 0.7) {
       const p = platforms[Math.floor(Math.random() * platforms.length)];
       x = p.x;
       y = p.y - 12; // slightly above platform
+      w = 100 + Math.random() * 150; // variable width
     } else {
       x = 600 + Math.random() * (LEVEL_WIDTH - 1200);
       y = GROUND_Y - 20;
+      w = 50 + Math.random() * 45;   // ground lasers stay narrow enough to jump over
     }
-    const w = 100 + Math.random() * 150; // variable width
     lasers.push({ x, y, w, h: 6, lastDamageFrame: -LASER_TICK_FRAMES });
   }
 }
@@ -238,7 +246,8 @@ function generatePlatforms() {
   const spacing = 320;
   for (let i = 1; i * spacing < LEVEL_WIDTH - 400; i++) {
     const x = i * spacing + Math.random() * 80 - 40;
-    const y = GROUND_Y - 70 - Math.random() * 60;
+    // Never higher than a normal jump can reach (see PLATFORM_MAX_RISE).
+    const y = GROUND_Y - PLATFORM_MIN_RISE - Math.random() * (PLATFORM_MAX_RISE - PLATFORM_MIN_RISE);
     const w = 80 + Math.random() * 60;
     plats.push({ x, y, w, h: 14 });
   }
@@ -272,7 +281,7 @@ function updatePlayer() {
 
   // Jump — ArrowUp only, Space is shoot
   if (keys['ArrowUp'] && player.onGround) {
-    player.vy = JUMP_FORCE * (player.jumpMult || 1);
+    player.vy = JUMP_FORCE * Math.sqrt(player.jumpMult || 1); // jumpMult scales height, so force scales by its square root
     player.onGround = false;
   }
 
@@ -441,9 +450,9 @@ function playReloadSound(finished) {
 
 // Powerups: jump double-height and speed boost
 const powerups = []; // each: {x,y,w,h,type:'jump'|'speed',collected:false}
-const JUMP_POWER_MULT = 2;
+const JUMP_POWER_MULT = 1.5;   // jump boost: 1.5x jump HEIGHT (was 2x force = 4x height)
 const JUMP_POWER_DURATION_FRAMES = 30 * 60; // 30s
-const SPEED_POWER_MULT = 3;
+const SPEED_POWER_MULT = 2;    // speed boost: 2x move speed (was 3x)
 const SPEED_POWER_DURATION_FRAMES = 15 * 60; // 15s
 
 // Player power timers
@@ -852,7 +861,7 @@ const pendingSpawns = [];
 const centerX  = o => o.x + o.w / 2;
 const playerCX = () => player.x + PLAYER_W / 2;
 
-function npcJump(n, vx = 0, force = JUMP_FORCE) {
+function npcJump(n, vx = 0, force = NPC_JUMP_FORCE) {
   n.vy = force;
   n.vx = vx;
   n.onGround = false;
@@ -1032,7 +1041,7 @@ function aiMove(n) {
     } else {
       const dir = Math.sign(targetX - centerX(n)) || 1;
       const aheadX = n.x + dir * 48;
-      const jumpApex = (JUMP_FORCE * JUMP_FORCE) / (2 * GRAVITY * 0.9);
+      const jumpApex = (NPC_JUMP_FORCE * NPC_JUMP_FORCE) / (2 * GRAVITY * 0.9);
       for (const p of platforms) {
         const playerUpThere = player.y + PLAYER_H <= p.y + 12;
         if (playerUpThere && aheadX + n.w > p.x && aheadX < p.x + p.w && p.y < n.y && n.y - p.y <= jumpApex + 8) {
@@ -1088,7 +1097,7 @@ function bossAI(n) {
   const canAct = n.onGround && Math.abs(dx) < 380 && n.attackTimer <= 0;
   if (canAct && (phase >= 2 || ai.camping)) {
     if (phase === 3 || ai.camping) {
-      if (Math.random() < 0.5 || ai.camping) npcJump(n, Math.max(-7, Math.min(7, dx / 50)), JUMP_FORCE * 1.1); // leap at the player
+      if (Math.random() < 0.5 || ai.camping) npcJump(n, Math.max(-7, Math.min(7, dx / 40)), NPC_JUMP_FORCE * 1.15); // leap at the player
       else n.windup = 36;
     } else {
       n.windup = 36;
@@ -1190,11 +1199,11 @@ function updatePowerups() {
       if (p.type === 'jump') {
         player.jumpMult = JUMP_POWER_MULT;
         player.jumpPowerTimer = JUMP_POWER_DURATION_FRAMES;
-        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'JUMP x2', color: '#8e44ad', life: 60, vy: -1.2, isText: true });
+        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'JUMP x' + JUMP_POWER_MULT, color: '#8e44ad', life: 60, vy: -1.2, isText: true });
       } else {
         player.speedMult = SPEED_POWER_MULT;
         player.speedPowerTimer = SPEED_POWER_DURATION_FRAMES;
-        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'SPD x3', color: '#27ae60', life: 60, vy: -1.2, isText: true });
+        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'SPD x' + SPEED_POWER_MULT, color: '#27ae60', life: 60, vy: -1.2, isText: true });
       }
       playPickupSound && playPickupSound();
     }
