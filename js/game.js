@@ -650,17 +650,44 @@ function spawnNPCs() {
   for (let i = 0; i < NPC_COUNT; i++) {
     const wx = 500 + i * zone + Math.random() * (zone * 0.6);
     const isTank = (i % 4 === 3); // every 4th NPC is a tank
-    npcs.push(makeNPC(wx, false, null, null, isTank));
+    npcs.push(makeNPC(wx, false, null, null, isTank, isTank ? 'normal' : pickEnemyKind(campaign.level)));
+  }
+
+  // First time a special type shows up in this campaign: say what it does.
+  campaign.seenKinds = campaign.seenKinds || [];
+  const fresh = npcs.map(n => n.kind).find(k => ENEMY_KINDS[k] && !campaign.seenKinds.includes(k));
+  if (fresh) {
+    campaign.seenKinds.push(fresh);
+    showToast('NEW ENEMY: ' + ENEMY_KINDS[fresh].name + ' - ' + ENEMY_KINDS[fresh].tip, 300);
   }
 }
 
-function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank = false) {
+// Special enemy types that join in later stages (abilities: see ENEMY TYPES section).
+// hp/speed are multipliers on a regular enemy; speed stays below the player's.
+const ENEMY_KINDS = {
+  runner:   { unlock: 11, hp: 0.6, speed: 0.97 / 0.9, reward: 3, name: 'RUNNER',   tip: 'FAST - LUNGES AT YOU WHEN IT FLASHES' },
+  spitter:  { unlock: 21, hp: 0.8, speed: 0.85,       reward: 4, name: 'SPITTER',  tip: 'SHOOTS FROM RANGE - JUMP THE BLOBS' },
+  bomber:   { unlock: 31, hp: 0.7, speed: 1.0,        reward: 3, name: 'BOMBER',   tip: 'EXPLODES UP CLOSE - SHOOT IT FIRST' },
+  shielder: { unlock: 41, hp: 2.0, speed: 0.6,        reward: 6, name: 'SHIELDER', tip: 'BLOCKS SHOTS FROM THE FRONT - GET BEHIND IT' },
+  medic:    { unlock: 51, hp: 1.2, speed: 0.9,        reward: 5, name: 'MEDIC',    tip: 'HEALS NEARBY ENEMIES - TAKE IT OUT FIRST' },
+};
+
+// Pick a type for a regular enemy slot: specials get more common deeper into the campaign.
+function pickEnemyKind(level) {
+  const unlocked = Object.keys(ENEMY_KINDS).filter(k => level >= ENEMY_KINDS[k].unlock);
+  if (!unlocked.length) return 'normal';
+  const chance = Math.min(0.6, 0.15 + (level - 11) * 0.006);
+  return Math.random() < chance ? unlocked[Math.floor(Math.random() * unlocked.length)] : 'normal';
+}
+
+function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank = false, kind = 'normal') {
   const lvlNow = campaign.level || 1;
+  const k = (!isBoss && !isTank && ENEMY_KINDS[kind]) || null;
   const dynamicNpcHp = 10 + Math.max(0, lvlNow - 1) * 1;
   const tankHp       = dynamicNpcHp * 3;  // 3x normal HP
   const hpBase = isBoss
     ? (customHp || (BOSS_BASE_HP + (Math.floor(lvlNow / 10) - 1) * BOSS_HP_PER))
-    : isTank ? tankHp : dynamicNpcHp;
+    : isTank ? tankHp : Math.round(dynamicNpcHp * (k ? k.hp : 1));
   const dmgBase = isBoss
     ? (customDmg || (BOSS_BASE_DMG + (Math.floor(lvlNow / 10) - 1) * BOSS_DMG_PER))
     : (0.5 * lvlNow); // tanks deal same contact damage as normals
@@ -687,9 +714,15 @@ function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank =
     isBoss: !!isBoss,
     isTank: !!isTank,
     contactDamage: dmgBase,
-    rielReward: isTank ? 5 : 2,  // tanks worth 5 Riels
+    rielReward: isTank ? 5 : k ? k.reward : 2,  // tanks worth 5 Riels, specials 3-6
     w: w,
     h: h,
+    // Enemy type + ability state (see ENEMY TYPES section)
+    kind: isBoss ? 'boss' : isTank ? 'tank' : (k ? kind : 'normal'),
+    speedMult: isTank ? 0.45 : k ? k.speed : 1,
+    facing: -1,
+    abilityTimer: 60 + Math.floor(Math.random() * 60),
+    lungeTimer: 0, lungeDir: 0, fuse: 0, turnTimer: 0, healPulse: 0, shieldFlash: 0,
     // AI (see ENEMY AI section)
     vx: 0,
     aware: false,        // has noticed the player
@@ -791,8 +824,8 @@ function updateNPCs() {
         bossAI(n);
       } else {
         if (--n.thinkTimer <= 0) { n.thinkTimer = AI_THINK_FRAMES + Math.floor(Math.random() * 6); aiThink(n); }
-        aiMove(n);
-        aiDodge(n);
+        if (!enemyAbility(n)) aiMove(n); // abilities can take over movement (runner lunge, bomber fuse)
+        if (n.kind !== 'bomber' || !n.fuse) aiDodge(n);
       }
     }
 
@@ -857,6 +890,12 @@ function updateNPCs() {
         b.y > n.y && b.y < n.y + n.h;
       if (hit) {
         bullets.splice(bi, 1);
+        if (n.kind === 'shielder' && Math.sign(b.dx) === -n.facing) { // flew into the shield's face
+          n.shieldFlash = 6;
+          rielParticles.push({ x: b.x, y: b.y, vx: -Math.sign(b.dx) * 1.2, vy: -1, life: 14 });
+          alertNPC(n, true);
+          break;
+        }
         addStat('shotsHit');
         n.hp -= player.gunDamage;
         spawnDmgNumber(n.x, n.y - 4, player.gunDamage, '#f5c400');
@@ -943,8 +982,8 @@ function updateAIDirector() {
   // If everyone is coming from one side, send the nearest quick enemy around the other side.
   if ((AI_IQ >= 0.35 || ai.camping) && fighters.length >= 2 && oneSided && flankers < maxFlankers) {
     const pick = fighters
-      .filter(n => !n.isTank && n.role !== 'flank' && Math.abs(centerX(n) - px) < 420)
-      .sort((a, b) => Math.abs(centerX(a) - px) - Math.abs(centerX(b) - px))[0];
+      .filter(n => (n.kind === 'normal' || n.kind === 'runner') && n.role !== 'flank' && Math.abs(centerX(n) - px) < 420)
+      .sort((a, b) => (Math.abs(centerX(a) - px) - (a.kind === 'runner' ? 200 : 0)) - (Math.abs(centerX(b) - px) - (b.kind === 'runner' ? 200 : 0)))[0];
     if (pick) {
       pick.role = 'flank';
       pick.flankSide = centerX(pick) < px ? 1 : -1; // the side of the player to get to
@@ -959,12 +998,13 @@ function aiThink(n) {
   const hpFrac = n.hp / n.maxHp;
   const allies = npcs.filter(o => o !== n && !o.dead && o.aware && Math.abs(centerX(o) - cx) < AI_ALLY_RADIUS).length;
 
+  if (n.kind === 'medic') { n.state = 'support'; return; } // medics hang back and heal
   if (n.state === 'retreat') {
     if (hpFrac >= AI_RECOVERED_HP) n.state = 'attack';   // patched up: back in
     else if (allies === 0) n.state = 'desperate';        // friends are gone: nowhere to hide
     return;
   }
-  if (hpFrac < AI_LOW_HP && !n.isTank) {
+  if (hpFrac < AI_LOW_HP && !n.isTank && n.kind !== 'bomber' && n.kind !== 'shielder') {
     n.state = allies > 0 ? 'retreat' : 'desperate';
     n.role = null;
     return;
@@ -989,7 +1029,7 @@ function aiMove(n) {
   const px = playerCX(), cx = centerX(n);
   const side = cx < px ? -1 : 1; // which side of the player this enemy is on
   let targetX = px;
-  let speed = n.isTank ? NPC_SPEED * 0.45 : NPC_SPEED;
+  let speed = NPC_SPEED * (n.speedMult || (n.isTank ? 0.45 : 1)); // per enemy type
   let stopDist = n.w * 0.6;      // close enough to touch the player
   let chasing = true;            // false while keeping away (no jumping at the player)
 
@@ -1035,6 +1075,19 @@ function aiMove(n) {
       }
       break;
 
+    case 'support': {            // medic: stay behind the nearest ally, run if the player gets close
+      let ally = null, best = Infinity;
+      for (const o of npcs) {
+        if (o === n || o.dead || !o.aware || o.kind === 'medic') continue;
+        const d = Math.abs(centerX(o) - cx);
+        if (d < best) { best = d; ally = o; }
+      }
+      if (Math.abs(cx - px) < 130) targetX = cx + side * 200;          // too close: flee
+      else targetX = ally ? centerX(ally) + side * 110 : px + side * 260;
+      stopDist = 6; chasing = false;
+      break;
+    }
+
     default: {                   // 'attack': if a tank ally is leading the push, stay behind it
       if (!n.isTank) {
         const tank = npcs.find(o => o.isTank && !o.dead && o.aware &&
@@ -1045,6 +1098,13 @@ function aiMove(n) {
         if (tank) { targetX = centerX(tank) + side * 34; stopDist = 4; }
       }
     }
+  }
+
+  // Spitters keep shooting range (~170-260px) instead of closing to contact range.
+  if (n.kind === 'spitter' && n.state !== 'retreat') {
+    const d = Math.abs(cx - px);
+    targetX = d > 260 ? px + side * 230 : d < 170 ? cx + side * 60 : cx;
+    stopDist = 4; chasing = false;
   }
 
   // Never perch on a platform right above the player: walk off the nearest edge and drop on them.
@@ -1152,6 +1212,153 @@ function summonMinions(boss, count) {
     const m = makeNPC(wx);
     m.aware = true; m.state = 'attack'; m.calledForHelp = true; m.thinkTimer = 20 + i * 5;
     pendingSpawns.push(m);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ENEMY TYPES (special abilities; types are defined in ENEMY_KINDS)
+// ═══════════════════════════════════════════════════════════════
+const enemyShots = [];   // spitter blobs
+const blasts     = [];   // bomber explosion effects (visual)
+const SPIT_SPEED      = 3.2;   // slower than the player: outrun it or jump it
+const BOMB_RADIUS     = 60;
+const BOMB_PLAYER_DMG = 0.30;  // of the player's max HP (before armor)
+const BOMB_ALLY_DMG   = 0.40;  // of each caught enemy's max HP
+const HEAL_RADIUS     = 130;
+const HEAL_AMOUNT     = 0.20;  // of each ally's max HP
+
+// Runs every frame for special enemies. Returns true when the ability is
+// controlling movement this frame (so the normal AI doesn't walk).
+function enemyAbility(n) {
+  const px = playerCX(), cx = centerX(n);
+  const dist = Math.abs(px - cx);
+  const vert = Math.abs((player.y + PLAYER_H / 2) - (n.y + n.h / 2));
+  if (n.shieldFlash > 0) n.shieldFlash--;
+  if (n.healPulse > 0) n.healPulse--;
+
+  switch (n.kind) {
+    case 'runner':     // flash, then a short fast lunge
+      if (n.lungeTimer > 0) { n.lungeTimer--; n.x += n.lungeDir * 7; return true; }
+      if (n.windup > 0) {
+        if (--n.windup === 0) { n.lungeTimer = 12; n.lungeDir = Math.sign(px - cx) || 1; }
+        return true;
+      }
+      if (n.abilityTimer > 0) n.abilityTimer--;
+      if (n.abilityTimer <= 0 && n.onGround && dist > 30 && dist < 120 && vert < 40 && n.state !== 'retreat') {
+        n.windup = 18; n.abilityTimer = 150;
+        return true;
+      }
+      return false;
+
+    case 'spitter':    // glow, then spit a slow blob at the player
+      if (n.windup > 0) { if (--n.windup === 0) fireEnemyShot(n); return false; }
+      if (n.abilityTimer > 0) n.abilityTimer--;
+      if (n.abilityTimer <= 0 && dist < 430 && n.state !== 'retreat') {
+        n.windup = 24; n.abilityTimer = 120 + Math.floor(Math.random() * 30);
+      }
+      return false;
+
+    case 'bomber':     // reach the player, stop and flash, then explode
+      if (n.fuse > 0) { if (--n.fuse === 0) explodeBomber(n); return true; }
+      if (dist < 34 && vert < 30) { n.fuse = 36; return true; }
+      return false;
+
+    case 'medic':      // heal everyone nearby every 3 seconds
+      if (n.abilityTimer > 0) n.abilityTimer--;
+      if (n.abilityTimer <= 0) { n.abilityTimer = 180; healAllies(n); }
+      return false;
+
+    case 'shielder': { // turns slowly to keep the shield toward the player
+      const want = Math.sign(px - cx) || 1;
+      if (want !== n.facing) { if (++n.turnTimer > 40) { n.facing = want; n.turnTimer = 0; } }
+      else n.turnTimer = 0;
+      return false;
+    }
+  }
+  return false;
+}
+
+function fireEnemyShot(n) {
+  const sx = centerX(n) + (player.x > n.x ? 6 : -6), sy = n.y + 8;
+  const tx = playerCX() - sx, ty = (player.y + PLAYER_H / 2) - sy;
+  const len = Math.hypot(tx, ty) || 1;
+  enemyShots.push({ x: sx, y: sy, vx: tx / len * SPIT_SPEED, vy: ty / len * SPIT_SPEED, life: 200,
+                    dmg: Math.max(3, player.maxHp * 0.07) });
+}
+
+function updateEnemyShots() {
+  for (let i = enemyShots.length - 1; i >= 0; i--) {
+    const s = enemyShots[i];
+    s.x += s.vx; s.y += s.vy; s.life--;
+    const hitPlayer = !player.dead && s.x > player.x && s.x < player.x + PLAYER_W && s.y > player.y && s.y < player.y + PLAYER_H;
+    if (hitPlayer) {
+      const dmg = damagePlayer(s.dmg);
+      if (settings.damageNumbers) spawnDmgNumber(player.x, player.y - 12, dmg, '#2ecc71');
+      enemyShots.splice(i, 1);
+      continue;
+    }
+    const hitWall = s.y > GROUND_Y || platforms.some(p => s.x > p.x && s.x < p.x + p.w && s.y > p.y && s.y < p.y + p.h);
+    if (hitWall || s.life <= 0 || s.x < 0 || s.x > LEVEL_WIDTH) enemyShots.splice(i, 1);
+  }
+}
+
+function drawEnemyShots() {
+  for (const s of enemyShots) {
+    const sx = wp(s.x);
+    if (sx < -10 || sx > BASE_W + 10) continue;
+    ctx.fillStyle = 'rgba(46,204,113,0.35)';
+    ctx.fillRect(sx - 5, s.y - 5, 10, 10);
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(sx - 3, s.y - 3, 6, 6);
+    ctx.fillStyle = '#c8ffd8';
+    ctx.fillRect(sx - 1, s.y - 2, 2, 2);
+  }
+}
+
+function explodeBomber(n) {
+  const cx = centerX(n), cy = n.y + n.h / 2;
+  blasts.push({ x: cx, y: cy, t: 0 });
+  playDeathSound();
+  if (!player.dead && Math.hypot(playerCX() - cx, (player.y + PLAYER_H / 2) - cy) < BOMB_RADIUS) {
+    const dmg = damagePlayer(player.maxHp * BOMB_PLAYER_DMG);
+    spawnDmgNumber(player.x, player.y - 12, dmg, '#e67e22');
+  }
+  n.dead = true; n.deadTimer = 120; n.hp = 0; // blown up: no skull, no reward
+  // The blast hurts other enemies too: lure bombers into a crowd.
+  for (const o of npcs) {
+    if (o === n || o.dead || o.isBoss) continue;
+    if (Math.hypot(centerX(o) - cx, (o.y + o.h / 2) - cy) < BOMB_RADIUS) {
+      o.hp -= o.maxHp * BOMB_ALLY_DMG;
+      spawnDmgNumber(o.x, o.y - 4, o.maxHp * BOMB_ALLY_DMG, '#e67e22');
+      if (o.hp <= 0) killNPC(o);
+    }
+  }
+  checkLevelClear();
+}
+
+function healAllies(m) {
+  m.healPulse = 24;
+  for (const o of npcs) {
+    if (o.dead || o.isBoss || Math.abs(centerX(o) - centerX(m)) > HEAL_RADIUS || Math.abs(o.y - m.y) > 80) continue;
+    if (o.hp >= o.maxHp) continue;
+    const amount = o.maxHp * (o === m ? HEAL_AMOUNT / 2 : HEAL_AMOUNT);
+    o.hp = Math.min(o.maxHp, o.hp + amount);
+    if (settings.damageNumbers) dmgNumbers.push({ x: o.x, y: o.y - 10, amount: '+' + Math.round(amount), color: '#2ecc71', life: 40, vy: -0.8, isText: true });
+  }
+}
+
+function drawBlasts() {
+  for (let i = blasts.length - 1; i >= 0; i--) {
+    const b = blasts[i];
+    b.t++;
+    const r = BOMB_RADIUS * Math.min(1, b.t / 8), a = Math.max(0, 1 - b.t / 22);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#e67e22';
+    ctx.beginPath(); ctx.arc(wp(b.x), b.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f5c400';
+    ctx.beginPath(); ctx.arc(wp(b.x), b.y, r * 0.55, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    if (b.t > 22) blasts.splice(i, 1);
   }
 }
 
@@ -1291,6 +1498,55 @@ function damagePlayer(amount, isTick) {
 // ═══════════════════════════════════════════════════════════════
 //  DRAW NPCs
 // ═══════════════════════════════════════════════════════════════
+// Body/eye colours for each enemy type (regular enemies stay red).
+const ENEMY_STYLE = {
+  normal:   { body: '#c0392b', eye: '#f5c400' },
+  runner:   { body: '#e67e22', eye: '#ffffff' },
+  spitter:  { body: '#27ae60', eye: '#f5c400' },
+  bomber:   { body: '#2c2c34', eye: '#e74c3c' },
+  shielder: { body: '#7f8c8d', eye: '#5dade2' },
+  medic:    { body: '#dfe6e9', eye: '#2e86de' },
+};
+
+// Small details that show what each special enemy does.
+function drawEnemyExtras(n, sx, by, S, ep) {
+  const facingRight = player.x > n.x;
+  switch (n.kind) {
+    case 'runner':   // speed streaks behind it while moving
+      if (n.animFrame === 1 || n.lungeTimer > 0) {
+        ctx.fillStyle = 'rgba(230,126,34,0.5)';
+        const bx = facingRight ? sx - 8 : sx + n.w + 2;
+        ctx.fillRect(bx, by + 9, 6, 2); ctx.fillRect(bx + (facingRight ? -3 : 3), by + 13, 6, 2);
+      }
+      break;
+    case 'spitter':  // mouth that glows before it spits
+      ep(facingRight ? 5 : 0, 2, n.windup > 0 && frameCount % 6 < 3 ? '#c8ffd8' : '#145a32');
+      if (n.windup > 0) { ctx.fillStyle = 'rgba(46,204,113,0.35)'; ctx.fillRect(sx + (facingRight ? n.w : -6), by + 3, 6, 9); }
+      break;
+    case 'bomber':   // fuse with a spark (fast flashing once armed)
+      ep(3, -1, '#888870');
+      ctx.fillStyle = (n.fuse > 0 ? frameCount % 4 < 2 : frameCount % 20 < 10) ? '#f5c400' : '#e74c3c';
+      ctx.fillRect(sx + 3 * S, by - 2 * S, S, S);
+      break;
+    case 'shielder': { // shield on the side it faces
+      const shx = n.facing > 0 ? sx + n.w : sx - 5;
+      ctx.fillStyle = n.shieldFlash > 0 ? '#ffffff' : '#bdc3c7';
+      ctx.fillRect(shx, by + 1, 5, n.h - 4);
+      ctx.fillStyle = '#5dade2';
+      ctx.fillRect(shx + 1, by + 4, 3, n.h - 10);
+      break;
+    }
+    case 'medic':    // red cross, and a green ring when it heals
+      ep(2, 3, '#e74c3c'); ep(3, 3, '#e74c3c'); ep(2, 4, '#e74c3c'); ep(3, 4, '#e74c3c');
+      if (n.healPulse > 0) {
+        ctx.strokeStyle = `rgba(46,204,113,${n.healPulse / 24})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(sx + n.w / 2, by + n.h / 2, HEAL_RADIUS * (1 - n.healPulse / 24), 0, Math.PI * 2); ctx.stroke();
+      }
+      break;
+  }
+}
+
 function drawNPCs() {
   for (const n of npcs) {
     const sx = wp(n.x);
@@ -1393,8 +1649,11 @@ function drawNPCs() {
       ctx.fillRect(sx + col * S, by + row * S, S, S);
     }
 
-    const body = n.touching ? '#e74c3c' : '#c0392b';
-    const eye  = '#f5c400';
+    // Colours per enemy type; flash white while winding up an attack (runner lunge, bomber fuse)
+    const style = ENEMY_STYLE[n.kind] || ENEMY_STYLE.normal;
+    const warning = (n.windup > 0 && n.kind === 'runner') || n.fuse > 0;
+    const body = warning && frameCount % 6 < 3 ? '#ffffff' : n.touching ? '#e74c3c' : style.body;
+    const eye  = style.eye;
     const boot = '#222233';
 
     // Head
@@ -1409,6 +1668,7 @@ function drawNPCs() {
     } else {
       ep(0,5,boot); ep(2,5,boot); ep(1,6,boot); ep(4,6,boot);
     }
+    drawEnemyExtras(n, sx, by, S, ep);
 
     // HP bar (respects settings)
     if (settings.hpBars) {
@@ -1922,12 +2182,14 @@ function drawPauseMenu() {
 //  TOAST NOTIFICATION
 // ═══════════════════════════════════════════════════════════════
 const toastQueue = [];
-let toastTimer2 = 0;
-let toastMsg    = '';
+// var (not let), and keep any value already set: showToast can be called while the
+// level is still being set up at load (e.g. the "NEW ENEMY" message), before this line runs.
+var toastTimer2 = toastTimer2 || 0;
+var toastMsg    = toastMsg || '';
 
-function showToast(msg) {
+function showToast(msg, frames = 120) {
   toastMsg    = msg;
-  toastTimer2 = 120;
+  toastTimer2 = frames;
 }
 
 function drawToast() {
@@ -1935,10 +2197,11 @@ function drawToast() {
   toastTimer2--;
   const alpha = Math.min(1, toastTimer2 / 20);
   ctx.globalAlpha = alpha;
-  ctx.fillStyle   = '#0f1526';
-  ctx.fillRect(BASE_W / 2 - 140, BASE_H - 40, 280, 22);
-  ctx.fillStyle   = '#f5c400';
   ctx.font        = '7px "Public Pixel", monospace';
+  const boxW = Math.max(280, Math.ceil(ctx.measureText(toastMsg).width) + 24); // fit longer messages
+  ctx.fillStyle   = '#0f1526';
+  ctx.fillRect(BASE_W / 2 - boxW / 2, BASE_H - 40, boxW, 22);
+  ctx.fillStyle   = '#f5c400';
   ctx.textAlign   = 'center';
   ctx.fillText(toastMsg, BASE_W / 2, BASE_H - 24);
   ctx.textAlign   = 'left';
@@ -2342,6 +2605,7 @@ function loop() {
     updatePlayer();
     updateBullets();
     updateNPCs();
+    updateEnemyShots();
     updateLasers();
     updatePowerups && updatePowerups();
   }
@@ -2352,6 +2616,8 @@ function loop() {
   updateDrawDroppedMags();
   drawPowerups();
   drawNPCs();
+  drawEnemyShots();
+  drawBlasts();
   drawPlayer();
   updateDrawRielParticles();
   updateDrawDmgNumbers();
