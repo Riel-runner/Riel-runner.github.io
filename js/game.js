@@ -646,7 +646,18 @@ function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank =
     contactDamage: dmgBase,
     rielReward: isTank ? 5 : 2,  // tanks worth 5 Riels
     w: w,
-    h: h
+    h: h,
+    // AI (see ENEMY AI section)
+    vx: 0,
+    aware: false,        // has noticed the player
+    alertDelay: 0,       // frames until reacting to an ally's call for help
+    calledForHelp: false,
+    state: 'idle',       // idle | attack | regroup | flank | retreat | desperate
+    role: null,          // 'flank' when sent around the player
+    thinkTimer: 0,
+    waited: 0,
+    phase: 1,            // boss phase
+    windup: 0, chargeTimer: 0, attackTimer: 0
   };
 }
 
@@ -714,6 +725,7 @@ function updateDrawRielParticles() {
 //  NPC UPDATE
 // ═══════════════════════════════════════════════════════════════
 function updateNPCs() {
+  updateAIDirector();
   for (const n of npcs) {
     if (n.dead) {
       n.deadTimer++;
@@ -723,50 +735,31 @@ function updateNPCs() {
     // Decrement attack cooldown
     if (n.attackCooldown > 0) n.attackCooldown--;
 
-    // Active when on-screen — pursue immediately
+    // ── Awareness: notice the player when on screen, or when called by an ally ──
     const screenX = wp(n.x);
-    if (screenX < BASE_W + 40 && screenX > -80) {
-      const dir = (player.x + PLAYER_W / 2) < (n.x + n.w / 2) ? -1 : 1;
-      const gap = (player.x + PLAYER_W / 2) - (n.x + n.w / 2);
-      const speed = n.isBoss ? BOSS_SPEED : n.isTank ? NPC_SPEED * 0.45 : NPC_SPEED;
-      if (Math.abs(gap) > n.w * 0.6) {
-        n.x += dir * speed;
-      }
+    if (!n.aware) {
+      if (screenX < BASE_W + 40 && screenX > -80) alertNPC(n, true);
+      else if (n.alertDelay > 0 && --n.alertDelay === 0) alertNPC(n, false);
+    }
 
-      // Attempt to jump toward player or onto a platform in front
-      if (n.onGround && n.jumpCooldown <= 0) {
-        // If player is noticeably higher, try a jump
-        // Jump with same force as the player when needed
-        if (player.y + 2 < n.y - 12 && Math.abs(gap) < 220) {
-          n.vy = JUMP_FORCE; // match player's jump height
-          n.onGround = false;
-          n.jumpCooldown = 40;
-        } else {
-          // Look for a platform slightly ahead to jump onto
-          const aheadX = n.x + dir * 48;
-          // Compute NPC maximum reachable rise from a jump (kinematic)
-          const jumpApex = (Math.abs(JUMP_FORCE) * Math.abs(JUMP_FORCE)) / (2 * GRAVITY);
-          for (const p of platforms) {
-            if (aheadX + n.w > p.x && aheadX < p.x + p.w) {
-              const heightDiff = n.y - p.y; // positive if platform is above NPC
-              if (p.y < n.y && heightDiff <= jumpApex + 8) {
-                // Platform is reachable — perform full player jump
-                n.vy = JUMP_FORCE;
-                n.onGround = false;
-                n.jumpCooldown = 40;
-                break;
-              }
-            }
-          }
-        }
+    // ── Decide (every few frames, like a reaction time) and move ──
+    if (n.aware && !player.dead) {
+      if (n.isBoss) {
+        bossAI(n);
+      } else {
+        if (--n.thinkTimer <= 0) { n.thinkTimer = AI_THINK_FRAMES + Math.floor(Math.random() * 6); aiThink(n); }
+        aiMove(n);
+        aiDodge(n);
       }
     }
 
-    // Vertical physics
+    // Vertical physics (plus horizontal momentum for committed jumps: vaults, leaps)
     if (!n.onGround) {
       n.vy += GRAVITY * 0.9; // slightly lighter gravity for NPCs
       n.y += n.vy;
+      n.x += n.vx || 0;
     }
+    n.x = Math.max(0, Math.min(LEVEL_WIDTH - n.w, n.x));
 
     // Platform / ground collision for NPCs
     n.onGround = false;
@@ -786,6 +779,7 @@ function updateNPCs() {
         n.onGround = true;
       }
     }
+    if (n.onGround) n.vx = 0; // landed: committed jump is over
 
     // Timers
     if (n.jumpCooldown > 0) n.jumpCooldown--;
@@ -823,8 +817,313 @@ function updateNPCs() {
         addStat('shotsHit');
         n.hp -= player.gunDamage;
         spawnDmgNumber(n.x, n.y - 4, player.gunDamage, '#f5c400');
+        alertNPC(n, true); // getting shot always gets their attention (and their friends')
         if (n.hp <= 0) killNPC(n);
         break;
+      }
+    }
+  }
+
+  separateNPCs();
+  // Boss minions are added after the loop so the array isn't changed mid-iteration.
+  while (pendingSpawns.length) npcs.push(pendingSpawns.shift());
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ENEMY AI
+// ═══════════════════════════════════════════════════════════════
+// Enemies notice the player, call for help, wait for backup, flank, hide behind
+// tanks, retreat to heal when hurt (or charge recklessly when alone), dodge bullets,
+// and won't sit on a platform above a camping player. Their "IQ" rises with the
+// level: faster reactions, more dodging, wider calls for help, flanking from level ~15.
+const AI_IQ            = Math.min(1, 0.25 + (LVL - 1) / 99 * 0.75); // 0.25 at level 1 → 1.0 at level 100
+const AI_THINK_FRAMES  = Math.round(28 - 16 * AI_IQ);  // frames between decisions (reaction time)
+const AI_DODGE_CHANCE  = 0.08 + 0.4 * AI_IQ;           // chance to jump over an incoming bullet
+const AI_ALERT_RADIUS  = 180 + 260 * AI_IQ;            // how far a call for help reaches
+const AI_ALLY_RADIUS   = 260;                          // allies this close count as "with me"
+const AI_LOW_HP        = 0.35;                         // below this, retreat (or go desperate)
+const AI_RECOVERED_HP  = 0.7;                          // retreaters return to the fight at this HP
+const AI_REGEN_PER_SEC = 0.04;                         // retreaters heal 4% max HP per second
+const AI_MAX_WAIT      = 150;                          // frames a lone enemy waits for backup
+const AI_CAMP_FRAMES   = 180;                          // player in one spot this long = camping
+const ai = { campX: 0, campFrames: 0, camping: false };
+const pendingSpawns = [];
+
+const centerX  = o => o.x + o.w / 2;
+const playerCX = () => player.x + PLAYER_W / 2;
+
+function npcJump(n, vx = 0, force = JUMP_FORCE) {
+  n.vy = force;
+  n.vx = vx;
+  n.onGround = false;
+  n.jumpCooldown = 40;
+}
+
+// The platform this enemy is standing on (null when on the ground or in the air).
+function platformUnder(n) {
+  if (!n.onGround) return null;
+  return platforms.find(p => Math.abs(n.y + n.h - p.y) < 2 && n.x + n.w > p.x && n.x < p.x + p.w) || null;
+}
+
+// Become aware of the player. Enemies that spot the player themselves (or get shot)
+// call nearby allies, who react a moment later; called allies don't call further.
+function alertNPC(n, callForHelp) {
+  if (!n.aware) {
+    n.aware = true;
+    n.state = 'attack';
+    n.thinkTimer = Math.floor(Math.random() * AI_THINK_FRAMES);
+    if (settings.damageNumbers) {
+      dmgNumbers.push({ x: n.x + n.w / 2 - 3, y: n.y - 12, amount: '!', color: '#f5c400', life: 40, vy: -0.6, isText: true });
+    }
+  }
+  if (!callForHelp || n.calledForHelp) return;
+  n.calledForHelp = true;
+  for (const o of npcs) {
+    if (o !== n && !o.dead && !o.aware && !o.alertDelay && Math.abs(centerX(o) - centerX(n)) < AI_ALERT_RADIUS) {
+      o.alertDelay = 10 + Math.floor(Math.random() * 25);
+    }
+  }
+}
+
+// Once per frame: spot camping, and organise pincer attacks.
+function updateAIDirector() {
+  if (Math.abs(player.x - ai.campX) > 70) { ai.campX = player.x; ai.campFrames = 0; }
+  else ai.campFrames++;
+  ai.camping = ai.campFrames > AI_CAMP_FRAMES && !player.dead;
+
+  const px = playerCX();
+  const fighters = npcs.filter(n => !n.dead && n.aware && !n.isBoss && n.state !== 'retreat');
+  const flankers = fighters.filter(n => n.role === 'flank').length;
+  const leftCount = fighters.filter(n => centerX(n) < px).length;
+  const oneSided = leftCount === 0 || leftCount === fighters.length;
+  const maxFlankers = ai.camping ? 2 : 1;
+  // If everyone is coming from one side, send the nearest quick enemy around the other side.
+  if ((AI_IQ >= 0.35 || ai.camping) && fighters.length >= 2 && oneSided && flankers < maxFlankers) {
+    const pick = fighters
+      .filter(n => !n.isTank && n.role !== 'flank' && Math.abs(centerX(n) - px) < 420)
+      .sort((a, b) => Math.abs(centerX(a) - px) - Math.abs(centerX(b) - px))[0];
+    if (pick) {
+      pick.role = 'flank';
+      pick.flankSide = centerX(pick) < px ? 1 : -1; // the side of the player to get to
+      pick.flankTimer = 0;
+    }
+  }
+}
+
+// Decide what to do, based on own health, nearby allies and what the player is doing.
+function aiThink(n) {
+  const px = playerCX(), cx = centerX(n);
+  const hpFrac = n.hp / n.maxHp;
+  const allies = npcs.filter(o => o !== n && !o.dead && o.aware && Math.abs(centerX(o) - cx) < AI_ALLY_RADIUS).length;
+
+  if (n.state === 'retreat') {
+    if (hpFrac >= AI_RECOVERED_HP) n.state = 'attack';   // patched up: back in
+    else if (allies === 0) n.state = 'desperate';        // friends are gone: nowhere to hide
+    return;
+  }
+  if (hpFrac < AI_LOW_HP && !n.isTank) {
+    n.state = allies > 0 ? 'retreat' : 'desperate';
+    n.role = null;
+    return;
+  }
+  if (n.role === 'flank') { n.state = 'flank'; return; }
+
+  // Alone, but backup is on its way from behind? Hold back and attack together
+  // (unless the player is reloading or camping: then press the advantage).
+  const side = Math.sign(cx - px) || 1;
+  const backupComing = npcs.some(o => o !== n && !o.dead && o.aware && !o.isBoss &&
+    Math.sign(centerX(o) - px) === side && Math.abs(centerX(o) - px) > Math.abs(cx - px) &&
+    Math.abs(centerX(o) - cx) < 520);
+  if (!n.isTank && allies === 0 && backupComing && player.reloadTimer <= 0 && !ai.camping && (n.waited || 0) < AI_MAX_WAIT) {
+    n.state = 'regroup';
+    return;
+  }
+  n.state = (hpFrac < AI_LOW_HP) ? 'desperate' : 'attack';
+}
+
+// Move according to the current state (runs every frame).
+function aiMove(n) {
+  const px = playerCX(), cx = centerX(n);
+  const side = cx < px ? -1 : 1; // which side of the player this enemy is on
+  let targetX = px;
+  let speed = n.isTank ? NPC_SPEED * 0.45 : NPC_SPEED;
+  let stopDist = n.w * 0.6;      // close enough to touch the player
+  let chasing = true;            // false while keeping away (no jumping at the player)
+
+  switch (n.state) {
+    case 'regroup':              // keep a safe distance until backup arrives
+      targetX = px + side * 170; speed *= 0.7; stopDist = 6; chasing = false;
+      n.waited = (n.waited || 0) + 1;
+      break;
+
+    case 'retreat': {            // fall back behind the nearest ally (preferably a tank) and heal
+      let cover = null, best = Infinity;
+      for (const o of npcs) {
+        if (o === n || o.dead || !o.aware) continue;
+        const score = Math.abs(centerX(o) - cx) - (o.isTank ? 150 : 0);
+        if (score < best) { best = score; cover = o; }
+      }
+      targetX = cover ? centerX(cover) + side * 60 : px + side * 320;
+      // Never step toward the player while retreating: if the ally has already pushed
+      // past, just hold back (at least 150px away).
+      if ((targetX - cx) * side < 0) targetX = Math.abs(cx - px) < 150 ? px + side * 150 : cx;
+      stopDist = 6; chasing = false;
+      const before = Math.ceil(n.hp);
+      n.hp = Math.min(n.maxHp, n.hp + n.maxHp * AI_REGEN_PER_SEC / 60);
+      if (settings.damageNumbers && frameCount % 60 === 0 && Math.ceil(n.hp) > before - 1) {
+        dmgNumbers.push({ x: n.x, y: n.y - 10, amount: '+' + Math.round(n.maxHp * AI_REGEN_PER_SEC), color: '#2ecc71', life: 35, vy: -0.8, isText: true });
+      }
+      break;
+    }
+
+    case 'flank':                // get to the other side of the player, vaulting over them
+      targetX = px + n.flankSide * 50; stopDist = 4;
+      n.flankTimer++;
+      if ((cx - px) * n.flankSide > 20 || n.flankTimer > 300) {
+        n.role = null; n.state = 'attack';
+      } else if (n.onGround && n.jumpCooldown <= 0 && Math.abs(cx - px) < 90 && (cx - px) * n.flankSide < 0) {
+        npcJump(n, n.flankSide * NPC_SPEED * 1.5);
+      }
+      break;
+
+    case 'desperate':            // hurt and alone: reckless, unpredictable charge
+      if (n.onGround && n.jumpCooldown <= 0 && Math.abs(cx - px) < 170 && Math.random() < 0.04) {
+        npcJump(n, -side * NPC_SPEED);
+      }
+      break;
+
+    default: {                   // 'attack': if a tank ally is leading the push, stay behind it
+      if (!n.isTank) {
+        const tank = npcs.find(o => o.isTank && !o.dead && o.aware &&
+          Math.sign(centerX(o) - px) === side &&
+          Math.abs(centerX(o) - px) < Math.abs(cx - px) &&   // tank is in front of me
+          Math.abs(centerX(o) - px) > 90 &&                  // and hasn't reached the player yet
+          Math.abs(centerX(o) - cx) < 240);
+        if (tank) { targetX = centerX(tank) + side * 34; stopDist = 4; }
+      }
+    }
+  }
+
+  // Never perch on a platform right above the player: walk off the nearest edge and drop on them.
+  // The drop is committed for a few frames so it doesn't step back onto the edge.
+  const plat = platformUnder(n);
+  if (plat && n.state !== 'retreat' && player.y > n.y + n.h - 4 && Math.abs(cx - px) < 170) {
+    n.dropTarget = (cx - plat.x < plat.x + plat.w - cx) ? plat.x - n.w : plat.x + plat.w + n.w;
+    n.dropTimer = 14;
+  }
+  if (n.dropTimer > 0) {
+    n.dropTimer--;
+    targetX = n.dropTarget;
+    stopDist = 0;
+    chasing = false;
+  }
+
+  // Walk toward the target (a committed jump carries its own momentum instead).
+  if (!n.vx) {
+    const dx = targetX - centerX(n);
+    if (Math.abs(dx) > stopDist) n.x += Math.sign(dx) * Math.min(speed, Math.abs(dx));
+  }
+
+  // Jumping: up to a player who is above, or onto a platform ahead only if the player is up there.
+  if (chasing && n.onGround && n.jumpCooldown <= 0) {
+    const gap = px - centerX(n);
+    if (player.y + 2 < n.y - 12 && Math.abs(gap) < 220) {
+      npcJump(n);
+    } else {
+      const dir = Math.sign(targetX - centerX(n)) || 1;
+      const aheadX = n.x + dir * 48;
+      const jumpApex = (JUMP_FORCE * JUMP_FORCE) / (2 * GRAVITY * 0.9);
+      for (const p of platforms) {
+        const playerUpThere = player.y + PLAYER_H <= p.y + 12;
+        if (playerUpThere && aheadX + n.w > p.x && aheadX < p.x + p.w && p.y < n.y && n.y - p.y <= jumpApex + 8) {
+          npcJump(n);
+          break;
+        }
+      }
+    }
+  }
+}
+
+// Sometimes jump over a bullet that is about to hit (tanks are too heavy to bother).
+function aiDodge(n) {
+  if (n.isTank || !n.onGround || n.jumpCooldown > 0 || frameCount < (n.nextDodgeRoll || 0)) return;
+  const cx = centerX(n), cy = n.y + n.h / 2;
+  for (const b of bullets) {
+    const incoming = (cx - b.x) * b.dx > 0;   // flying toward this enemy
+    if (incoming && Math.abs(cx - b.x) < 110 && Math.abs(b.y - cy) < n.h) {
+      n.nextDodgeRoll = frameCount + 20;      // one roll per volley, not per frame
+      const chance = AI_DODGE_CHANCE * (n.state === 'desperate' ? 1.4 : 1);
+      if (Math.random() < chance) npcJump(n);
+      return;
+    }
+  }
+}
+
+// Boss: three phases by health. Below 60% it calls 2 minions and starts telegraphed
+// charges; below 30% it calls 3 more and adds leaps. Camping players get leapt on.
+function bossAI(n) {
+  const px = playerCX(), cx = centerX(n);
+  const dx = px - cx;
+  const hpFrac = n.hp / n.maxHp;
+  const phase = hpFrac > 0.6 ? 1 : hpFrac > 0.3 ? 2 : 3;
+  if (phase > (n.phase || 1)) {
+    n.phase = phase;
+    summonMinions(n, phase === 2 ? 2 : 3);
+    showToast(phase === 2 ? 'THE BOSS CALLS FOR BACKUP!' : 'THE BOSS IS ENRAGED!');
+    n.attackTimer = 60;
+  }
+
+  // Charge attack: flash as a warning, then rush.
+  if (n.windup > 0) {
+    if (--n.windup === 0) { n.chargeTimer = 28; n.chargeDir = Math.sign(dx) || 1; }
+    return;
+  }
+  if (n.chargeTimer > 0) {
+    n.chargeTimer--;
+    n.x += n.chargeDir * MOVE_SPEED * 2.2;
+    return;
+  }
+
+  n.attackTimer = (n.attackTimer || 0) - 1;
+  const canAct = n.onGround && Math.abs(dx) < 380 && n.attackTimer <= 0;
+  if (canAct && (phase >= 2 || ai.camping)) {
+    if (phase === 3 || ai.camping) {
+      if (Math.random() < 0.5 || ai.camping) npcJump(n, Math.max(-7, Math.min(7, dx / 50)), JUMP_FORCE * 1.1); // leap at the player
+      else n.windup = 36;
+    } else {
+      n.windup = 36;
+    }
+    n.attackTimer = phase === 3 ? 140 : 210;
+    return;
+  }
+
+  // Otherwise chase (slightly slower than the player), jumping up to them if needed.
+  if (!n.vx && Math.abs(dx) > n.w * 0.6) n.x += Math.sign(dx) * BOSS_SPEED;
+  if (n.onGround && n.jumpCooldown <= 0 && player.y + 2 < n.y - 12 && Math.abs(dx) < 220) npcJump(n);
+}
+
+function summonMinions(boss, count) {
+  for (let i = 0; i < count; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const wx = Math.max(0, Math.min(LEVEL_WIDTH - NPC_W, centerX(boss) + side * (70 + 30 * i)));
+    const m = makeNPC(wx);
+    m.aware = true; m.state = 'attack'; m.calledForHelp = true; m.thinkTimer = 20 + i * 5;
+    pendingSpawns.push(m);
+  }
+}
+
+// Keep enemies from stacking into one blob, so a group spreads out and surrounds.
+function separateNPCs() {
+  for (let i = 0; i < npcs.length; i++) {
+    const a = npcs[i];
+    if (a.dead || a.isBoss || !a.onGround) continue;
+    for (let j = i + 1; j < npcs.length; j++) {
+      const b = npcs[j];
+      if (b.dead || b.isBoss || !b.onGround || Math.abs(a.y - b.y) > 6) continue;
+      const d = centerX(b) - centerX(a);
+      if (Math.abs(d) < 10) {
+        const push = d >= 0 ? 0.4 : -0.4;
+        a.x -= push; b.x += push;
       }
     }
   }
@@ -966,7 +1265,8 @@ function drawNPCs() {
     if (n.isBoss) {
       // Boss: draw scaled-up pixel art (2x the NPC pixels)
       const S = PIXEL * 2; // scale per-pixel for boss
-      const body = n.touching ? '#e74c3c' : '#2e86de'; // blue boss, flash red when touching
+      // blue boss, flash red when touching, flash white while winding up a charge (warning)
+      const body = (n.windup > 0 && frameCount % 6 < 3) ? '#ffffff' : n.touching ? '#e74c3c' : '#2e86de';
       const eye  = '#ffffff';
       const boot = '#11131a';
 
