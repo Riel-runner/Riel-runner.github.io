@@ -157,6 +157,13 @@ body {
 .btn-secondary:hover { border-color: #f5c400; color: #f5c400; }
 .btn-secondary:active { box-shadow: 0 2px #222230, 0 3px #0a0e1a; }
 
+/* Pixel-art icon that inherits the button text color (so it turns gold on hover too). */
+.btn-icon {
+  width: 1.1em;
+  height: 1.25em;
+  vertical-align: -0.2em;
+}
+
 .blink { animation: blink 1s step-end infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
