@@ -22,6 +22,10 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
+// Canvas text doesn't trigger a web-font download by itself, so load the game
+// font up front (the HUD switches to it on the next frame once it's ready).
+if (document.fonts) document.fonts.load('16px "Public Pixel"').catch(() => {});
+
 // ═══════════════════════════════════════════════════════════════
 //  LOAD CAMPAIGN + SETTINGS
 // ═══════════════════════════════════════════════════════════════
@@ -665,7 +669,7 @@ function updateDrawDmgNumbers() {
     const alpha = Math.min(1, d.life / 20);
     ctx.globalAlpha = alpha;
     ctx.fillStyle   = d.color;
-    ctx.font        = '6px "Press Start 2P", monospace';
+    ctx.font        = '6px "Public Pixel", monospace';
     // isText = riel gain label, otherwise show damage
     const label = d.isText ? ('+' + d.amount) : ('-' + d.amount);
     ctx.fillText(label, wp(d.x), d.y);
@@ -1395,7 +1399,7 @@ function drawPowerups() {
       ctx.fillStyle = '#f5c400';
       ctx.fillRect(sx + 2, p.y + 2, p.w - 4, p.h - 4);
       ctx.fillStyle = '#ffffff';
-      ctx.font = '6px "Press Start 2P", monospace';
+      ctx.font = '6px "Public Pixel", monospace';
       ctx.fillText('J', sx + 3, p.y + 8);
     } else {
       ctx.fillStyle = '#27ae60'; // green
@@ -1403,7 +1407,7 @@ function drawPowerups() {
       ctx.fillStyle = '#f5c400';
       ctx.fillRect(sx + 2, p.y + 2, p.w - 4, p.h - 4);
       ctx.fillStyle = '#ffffff';
-      ctx.font = '6px "Press Start 2P", monospace';
+      ctx.font = '6px "Public Pixel", monospace';
       ctx.fillText('S', sx + 3, p.y + 8);
     }
   }
@@ -1459,12 +1463,12 @@ function drawPauseMenu() {
 
   // Title
   ctx.textAlign = 'center';
-  ctx.font = '14px "Press Start 2P", monospace';
+  ctx.font = '14px "Public Pixel", monospace';
   ctx.fillStyle = '#f5c400';
   ctx.fillText('PAUSED', cx, panelY + 30);
 
   // Version badge
-  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.font = '7px "Public Pixel", monospace';
   ctx.fillStyle = '#444460';
   ctx.fillText(GAME_VERSION, cx, panelY + 46);
 
@@ -1474,7 +1478,7 @@ function drawPauseMenu() {
 
   // Stats block
   ctx.textAlign = 'left';
-  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.font = '6px "Public Pixel", monospace';
   const stats = [
     ['CAMPAIGN',  campaign.name || 'UNKNOWN'],
     ['LEVEL',     campaign.level + ' / 100'],
@@ -1512,13 +1516,13 @@ function drawPauseMenu() {
     }
 
     ctx.textAlign = 'center';
-    ctx.font = '9px "Press Start 2P", monospace';
+    ctx.font = '9px "Public Pixel", monospace';
     ctx.fillStyle = selected ? '#0a0e1a' : '#888870';
     ctx.fillText((selected ? '▶ ' : '  ') + item.label, cx, itemY);
   });
 
   // Hint
-  ctx.font = '5px "Press Start 2P", monospace';
+  ctx.font = '5px "Public Pixel", monospace';
   ctx.fillStyle = '#333344';
   ctx.fillText('↑↓ NAVIGATE   SPACE/ENTER CONFIRM   ESC RESUME   TAP TO SELECT', cx, panelY + panelH - 10);
   ctx.textAlign = 'left';
@@ -1544,7 +1548,7 @@ function drawToast() {
   ctx.fillStyle   = '#0f1526';
   ctx.fillRect(BASE_W / 2 - 140, BASE_H - 40, 280, 22);
   ctx.fillStyle   = '#f5c400';
-  ctx.font        = '7px "Press Start 2P", monospace';
+  ctx.font        = '7px "Public Pixel", monospace';
   ctx.textAlign   = 'center';
   ctx.fillText(toastMsg, BASE_W / 2, BASE_H - 24);
   ctx.textAlign   = 'left';
@@ -1565,18 +1569,18 @@ function drawHUD() {
   ctx.fillStyle = hpFrac > 0.5 ? '#2ecc71' : hpFrac > 0.25 ? '#f5c400' : '#e74c3c';
   ctx.fillRect(barX, barY, barW * hpFrac, barH);
   ctx.fillStyle = '#e8e8d0';
-  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.font = '6px "Public Pixel", monospace';
   ctx.fillText('HP ' + Math.ceil(player.hp) + ' / ' + player.maxHp, barX + 4, barY + 10);
 
   // Lives (3 hearts, grey when lost)
-  ctx.font = '11px "Press Start 2P", monospace';
+  ctx.font = '11px "Public Pixel", monospace';
   for (let i = 0; i < 3; i++) {
     ctx.fillStyle = i < player.lives ? '#c0392b' : '#2a2e44';
     ctx.fillText('♥', barX + i * 18, barY + 30);
   }
 
   // Ammo: magazine count, or a blinking RELOADING with a countdown
-  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.font = '6px "Public Pixel", monospace';
   if (player.reloadTimer > 0) {
     const secs = (player.reloadTimer / 60).toFixed(1);
     ctx.fillStyle = Math.floor(frameCount / 15) % 2 === 0 ? '#f5c400' : '#b8920a';
@@ -1591,7 +1595,7 @@ function drawHUD() {
   }
 
   // Powerup indicators
-  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.font = '6px "Public Pixel", monospace';
   if (player.jumpPowerTimer > 0) {
     const secs = Math.ceil(player.jumpPowerTimer / 60);
     ctx.fillStyle = '#f5c400';
@@ -1610,12 +1614,12 @@ function drawHUD() {
   ctx.fillStyle = dashReady ? '#2ecc71' : '#2255cc';
   const dashFrac = dashReady ? 1 : 1 - (player.dashCooldown / DASH_COOLDOWN);
   ctx.fillRect(barX, barY + 52, 80 * dashFrac, 6);
-  ctx.font = '5px "Press Start 2P", monospace';
+  ctx.font = '5px "Public Pixel", monospace';
   ctx.fillStyle = dashReady ? '#2ecc71' : '#888870';
   ctx.fillText(dashReady ? 'DASH RDY' : 'DASH ' + Math.ceil(player.dashCooldown / 60) + 'S', barX, barY + 68);
 
   // Right panel
-  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.font = '7px "Public Pixel", monospace';
   ctx.textAlign = 'right';
   ctx.fillStyle = '#f5c400';
   ctx.fillText('LVL ' + campaign.level, BASE_W - 10, 18);
@@ -1653,7 +1657,7 @@ function drawOverlay() {
   } else if (gameState === 'boss_slayed') {
     drawBanner('BOSS SLAYED!', '#f5c400', cx, cy);
     if (stateTimer > 35) {
-      ctx.font      = '7px "Press Start 2P", monospace';
+      ctx.font      = '7px "Public Pixel", monospace';
       ctx.fillStyle = '#2ecc71';
       ctx.fillText('MAX HP UP! NOW ' + player.maxHp, cx, cy + 50);
     }
@@ -1666,7 +1670,7 @@ function drawOverlay() {
   } else if (gameState === 'you_win') {
     drawBanner('YOU BEAT THE GAME!', '#f5c400', cx, cy - 20);
     if (stateTimer > 35) {
-      ctx.font = '7px "Press Start 2P", monospace';
+      ctx.font = '7px "Public Pixel", monospace';
       ctx.fillStyle = '#e8e8d0';
       ctx.fillText('CONGRATULATIONS!', cx, cy + 24);
       ctx.fillStyle = '#888870';
@@ -1688,7 +1692,7 @@ function drawBanner(text, color, cx, cy) {
   ctx.fillRect(cx - 230, cy - 40, 460, 4);
   ctx.fillRect(cx - 230, cy + 16, 460, 4);
   const size = text.length > 14 ? '13px' : '17px';
-  ctx.font      = `${size} "Press Start 2P", monospace`;
+  ctx.font      = `${size} "Public Pixel", monospace`;
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.fillText(text, cx + 3, cy + 3);
   ctx.fillStyle = color;

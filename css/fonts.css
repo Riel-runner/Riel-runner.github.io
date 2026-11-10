@@ -1,0 +1,6 @@
+/* Game font: Public Pixel by GGBotNet (CC0 / public domain), served locally. */
+@font-face {
+  font-family: 'Public Pixel';
+  src: url('../assets/fonts/PublicPixel.ttf') format('truetype');
+  font-display: swap;
+}

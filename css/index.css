@@ -2,7 +2,7 @@
 
 body {
   background-color: #0a0e1a;
-  font-family: 'Press Start 2P', monospace;
+  font-family: 'Public Pixel', monospace;
   color: #e8e8d0;
   height: 100vh;
   overflow: hidden;
@@ -128,7 +128,7 @@ body {
   width: 100%;
   padding: 14px 0;
   text-align: center;
-  font-family: 'Press Start 2P', monospace;
+  font-family: 'Public Pixel', monospace;
   font-size: clamp(9px, 2vw, 12px);
   letter-spacing: 0.1em;
   cursor: pointer;
