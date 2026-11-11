@@ -222,3 +222,19 @@ body::after {
   color: #222233;
   z-index: 5;
 }
+
+/* ── Class cards ── */
+.tabs { grid-template-columns: repeat(4, 1fr); }
+.class-weapon { font-size: 7px; color: #f5c400; letter-spacing: 0.12em; }
+.class-stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+  font-size: 6px;
+  letter-spacing: 0.08em;
+}
+.class-stats div { display: flex; justify-content: space-between; }
+.class-stats span { color: #555566; }
+.class-stats b { color: #e8e8d0; font-weight: normal; }
+.class-desc { font-size: 5px; line-height: 1.8; color: #888870; letter-spacing: 0.06em; text-align: center; min-height: 26px; }

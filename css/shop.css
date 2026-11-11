@@ -531,3 +531,6 @@ body::after {
     width: 100%;
   }
 }
+
+/* Current class (upgrade numbers are for this weapon) */
+.class-badge { font-size: 7px; color: #5dade2; letter-spacing: 0.15em; margin: -18px 0 22px; text-align: center; }

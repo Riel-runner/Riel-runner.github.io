@@ -63,7 +63,7 @@ UPG.LIST.forEach(u => {
         <div class="upg-level"></div>
       </div>
     </div>
-    <div class="item-desc">${u.desc}</div>
+    <div class="item-desc">${UPG.descOf(u)}</div>
     <div class="dmg-preview">
       <span class="dmg-current"></span>
       <span class="dmg-arrow">&#9658;</span>
@@ -202,6 +202,8 @@ function showToast(msg) {
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────
+// Which class/weapon the upgrade numbers are for (classes are bought in the gem shop).
+{ const cl = UPG.currentClass(); document.getElementById("class-badge").textContent = "CLASS: " + cl.name + " \u00b7 " + cl.weapon; }
 render();
 
 

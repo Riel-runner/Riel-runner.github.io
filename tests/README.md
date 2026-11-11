@@ -23,6 +23,7 @@ To run one suite: `node tests/<name>-test.js . "<path to chrome.exe>"` from the 
 | `lives` | HP refills every level; lives refill only after boss levels |
 | `shop` | Upgrades, prices, level-10 cap, effects in game, old-save migration |
 | `store` | Cosmetics shop: SHOP button, buying/equipping skins and trails, gems per level (shared, once per level), cosmetics in game |
+| `classes` | Classes in the gem shop: buying, upgrade numbers that follow the class, AK / sniper pierce / shotgun pellets in game |
 | `modes` | Campaign types and Riel Tokens: unlocks, finishing a campaign, Time Attack, Endless, Boss Rush, Nightmare |
 | `ai` | Enemy AI: help calls, backup, flanking, tank cover, retreat, dodging, bosses |
 | `soak` | Full levels run 2000 frames with no crashes or stuck enemies |

@@ -3,7 +3,7 @@
 const C = window.RielCosmetics;
 const TAB_KEY = 'rielrunner_store_tab';
 
-let tab = 'weapon';
+let tab = 'class';
 try { const t = localStorage.getItem(TAB_KEY); if (C.CATEGORIES.includes(t)) tab = t; } catch {}
 
 const grid = document.getElementById('store-grid');
@@ -24,6 +24,9 @@ function render() {
     b.setAttribute('aria-selected', on);
   });
 
+  document.getElementById('store-foot').innerHTML = tab === 'class'
+    ? 'CLASSES CHANGE YOUR WEAPON &middot; UPGRADES SCALE WITH IT'
+    : 'LOOKS ONLY &middot; NO EFFECT ON GAMEPLAY';
   grid.innerHTML = '';
   previews = [];
   for (const it of C.CATALOG[tab]) {
@@ -35,6 +38,7 @@ function render() {
     card.innerHTML = `
       <canvas class="store-preview" width="120" height="72"></canvas>
       <div class="store-name">${it.name}</div>
+      ${tab === 'class' ? classStatsHtml(it) : ''}
       <div class="store-price">${owned ? (equipped ? 'EQUIPPED' : 'OWNED') : it.price === 0 ? 'FREE' : GEM_SVG + ' ' + it.price}</div>
       <button class="store-btn" data-id="${it.id}"></button>`;
     const btn = card.querySelector('.store-btn');
@@ -47,11 +51,25 @@ function render() {
   }
 }
 
+// Weapon stats for a class card (base numbers; upgrades build on these).
+function classStatsHtml(c) {
+  const rows = [
+    ['DMG',    (c.dmg === 1 ? '1' : c.dmg) + 'x' + (c.pellets ? ' (' + c.pellets + ' PELLETS)' : '')],
+    ['MAG',    String(c.mag)],
+    ['FIRE',   (60 / c.fireCd).toFixed(1) + '/S'],
+    ['RELOAD', (c.reload / 60).toFixed(1) + 'S'],
+    ['SPEED',  Math.round(c.speed * 100) + '%'],
+  ];
+  return '<div class="class-weapon">' + c.weapon + (c.pierce ? ' &middot; PIERCES' : '') + '</div>' +
+    '<div class="class-stats">' + rows.map(([k, v]) => '<div><span>' + k + '</span><b>' + v + '</b></div>').join('') + '</div>' +
+    '<div class="class-desc">' + c.desc + '</div>';
+}
+
 // ─── PREVIEWS (animated) ─────────────────────────────────────────────
 let t = 0;
 function drawPreviews() {
   t++;
-  const eqPlayer = C.equipped('player'), eqWeapon = C.equipped('weapon');
+  const eqPlayer = C.equipped('player'), eqWeapon = C.equipped('weapon'), eqClass = C.equipped('class');
   for (const pv of previews) {
     const ctx = pv.canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
@@ -70,9 +88,11 @@ function drawPreviews() {
       C.drawTrail(pv.particles, ctx, x => x);
     }
     C.drawPlayerSprite(ctx, px, py, S, playerSkin, weaponSkin,
-      { frame: running ? Math.floor(t / 8) % 3 : 0, gunFlash: pv.cat === 'weapon' && t % 40 < 5 });
-    if (pv.cat === 'weapon') {                       // a bullet flying out of the gun
-      const bx = px + 10 * S + ((t * 3) % 40);
+      { frame: running ? Math.floor(t / 8) % 3 : 0, gunFlash: (pv.cat === 'weapon' || pv.cat === 'class') && t % 40 < 5,
+        cls: pv.cat === 'class' ? pv.item : eqClass });
+    if (pv.cat === 'weapon' || pv.cat === 'class') { // a bullet flying out of the gun
+      const gunEnd = (pv.cat === 'class' ? pv.item : eqClass).muzzle + 1;
+      const bx = px + gunEnd * S + ((t * 3) % 30);
       ctx.fillStyle = weaponSkin.glow;  ctx.fillRect(bx - 12, py + 3 * S + 1, 12, 4);
       ctx.fillStyle = weaponSkin.bullet; ctx.fillRect(bx, py + 3 * S + 1, 14, 4);
     }

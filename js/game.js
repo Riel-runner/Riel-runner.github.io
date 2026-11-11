@@ -55,6 +55,11 @@ const PLAYER_SHOOT_CD   = window.RielUpgrades.effect(campaign, 'firerate'); // f
 const PLAYER_SKIN = window.RielCosmetics.equipped('player');
 const WEAPON_SKIN = window.RielCosmetics.equipped('weapon');
 const TRAIL_ID    = window.RielCosmetics.equipped('trail').id;
+// Class (gem shop): its weapon sets damage multiplier, magazine, fire rate, reload,
+// move speed, bullet speed, shotgun pellets and sniper piercing. Upgrade effects
+// (js/upgrades.js) are based on these numbers too.
+const PLAYER_CLASS = window.RielCosmetics.equipped('class');
+const classDamage  = () => player.gunDamage * PLAYER_CLASS.dmg;          // per bullet / pellet
 const trailParticles = [];
 
 // Run stats shown on the death screen / campaign details. Older saves won't
@@ -698,8 +703,17 @@ function firePlayerBullet() {
     dx = tx / len; dy = ty / len;
   }
 
-  bullets.push({ x: startX, y: startY, dx, dy, alive: true });
-  addStat('shotsFired');
+  const pellets = PLAYER_CLASS.pellets || 1;
+  for (let i = 0; i < pellets; i++) {
+    // Shotgun: fan the pellets evenly across the spread angle around the aim direction.
+    const a = pellets > 1 ? (i / (pellets - 1) - 0.5) * 2 * (PLAYER_CLASS.spread || 0) : 0;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    bullets.push({ x: startX, y: startY, dx: dx * ca - dy * sa, dy: dx * sa + dy * ca, alive: true,
+                   speed: PLAYER_CLASS.bulletSpeed || BULLET_SPEED,   // sniper bullets fly faster
+                   pierce: !!PLAYER_CLASS.pierce, hits: [],          // sniper: goes through enemies
+                   life: PLAYER_CLASS.range || 0 });                 // shotgun: short range
+  }
+  addStat('shotsFired', pellets);
   player.gunFlash = 5;
 
   // Gunshot sound
@@ -712,11 +726,12 @@ function firePlayerBullet() {
 function updateBullets() {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
+    if (b.life && --b.life <= 0) { bullets.splice(i, 1); continue; } // shotgun range
 
     const prevX = b.x;
     const prevY = b.y;
-    const stepX = b.dx * BULLET_SPEED;
-    const stepY = b.dy * BULLET_SPEED;
+    const stepX = b.dx * (b.speed || BULLET_SPEED);
+    const stepY = b.dy * (b.speed || BULLET_SPEED);
     const steps = Math.max(1, Math.ceil(Math.hypot(stepX, stepY) / PIXEL));
 
     let removed = false;
@@ -1055,15 +1070,17 @@ function updateNPCs() {
         b.x > n.x && b.x < n.x + n.w &&
         b.y > n.y && b.y < n.y + n.h;
       if (hit) {
-        bullets.splice(bi, 1);
-        if (n.kind === 'shielder' && Math.sign(b.dx) === -n.facing) { // flew into the shield's face
+        if (b.pierce && b.hits.includes(n)) continue;              // already went through this one
+        const shielded = n.kind === 'shielder' && Math.sign(b.dx) === -n.facing;
+        if (b.pierce && !shielded) b.hits.push(n); else bullets.splice(bi, 1);
+        if (shielded) { // flew into the shield's face
           n.shieldFlash = 6;
           rielParticles.push({ x: b.x, y: b.y, vx: -Math.sign(b.dx) * 1.2, vy: -1, life: 14 });
           alertNPC(n, true);
           break;
         }
         addStat('shotsHit');
-        const shotDmg = player.gunDamage * (levelEvent.playerDmgMult || 1);
+        const shotDmg = classDamage() * (levelEvent.playerDmgMult || 1); // class weapon x level event
         n.hp -= shotDmg;
         spawnDmgNumber(n.x, n.y - 4, shotDmg, '#f5c400');
         alertNPC(n, true); // getting shot always gets their attention (and their friends')
@@ -2116,8 +2133,8 @@ function drawPlayer() {
       p(7,4,magC);                                      // mag seated
     }
   } else {
-    p(6,3,skin); p(7,3,gunC); p(8,3,gunC);
-    if (player.gunFlash > 0) { p(9,3,flash); p(9,2,flash); }
+    p(6,3,skin);
+    window.RielCosmetics.drawGun(p, PLAYER_CLASS, WEAPON_SKIN, player.gunFlash > 0); // class weapon
   }
 
   // Legs
@@ -2373,7 +2390,7 @@ function drawPauseMenu() {
     ['HP',        Math.ceil(player.hp) + ' / ' + player.maxHp],
     ['LIVES',     '♥'.repeat(player.lives) + '♡'.repeat(Math.max(0, 3 - player.lives))],
     ['RIELS',     campaign.riels + ' KHR'],
-    ['GUN DMG',   player.gunDamage],
+    ['GUN DMG',   (Math.round(classDamage() * 10) / 10) + (PLAYER_CLASS.pellets ? ' x' + PLAYER_CLASS.pellets : '') + ' ' + PLAYER_CLASS.weapon],
     ['UPGRADES',  campaign.upgradeCount || 0],
     ['BOSSES',    (campaign.bossesBeaten || 0) + ' / 10'],
     ['EVENT',     levelEvent.id === 'none' ? 'NONE' : levelEvent.label],
@@ -2523,7 +2540,7 @@ function drawHUD() {
   ctx.fillStyle = '#e8e8d0';
   ctx.fillText(campaign.riels + ' KHR', BASE_W - 10, rightY + 12);
   ctx.fillStyle = '#888870';
-  ctx.fillText('DMG ' + player.gunDamage, BASE_W - 10, rightY + 24);
+  ctx.fillText('DMG ' + (Math.round(classDamage() * 10) / 10) + (PLAYER_CLASS.pellets ? 'x' + PLAYER_CLASS.pellets : ''), BASE_W - 10, rightY + 24);
   const alive = npcs.filter(n => !n.dead).length;
   ctx.fillStyle = alive > 0 ? '#e8e8d0' : '#2ecc71';
   ctx.fillText(alive + ' LEFT', BASE_W - 10, rightY + 36);

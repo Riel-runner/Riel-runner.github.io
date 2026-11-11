@@ -5,27 +5,32 @@ window.RielUpgrades = (function () {
   const MAX_LEVEL   = 10;
   const COST_GROWTH = 1.4;
 
-  // Base game values the upgrades modify (keep in sync with game.js).
-  const BASE_SHOOT_COOLDOWN = 18;      // frames between shots
-  const BASE_RELOAD_FRAMES  = 3 * 60;  // 3 seconds
-  const BASE_MAG_SIZE       = 20;      // bullets per magazine
+  // Base numbers come from the equipped class (js/cosmetics.js), so upgrades scale with
+  // your weapon: e.g. Mag Size adds ~25% of the class's magazine per level (pistol +5,
+  // AK +8, sniper +1) and fire rate / reload cut a percentage of the class's base.
+  const DEFAULT_CLASS = { name: 'GUNNER', weapon: 'PISTOL', dmg: 1, mag: 20, fireCd: 18, reload: 180, speed: 1 };
+  const cls = () => (window.RielCosmetics && window.RielCosmetics.equipped('class')) || DEFAULT_CLASS;
+  const magStep = c => Math.max(1, Math.round(c.mag * 0.25));
+  const num = v => (Math.round(v * 10) / 10).toString();             // 1.6, 4, 2.2
+  const dmgText = (base, c) => num(base * c.dmg) + (c.pellets ? ' x' + c.pellets : '') + ' DMG';
 
   const pct = n => Math.round(n * 100) + '%';
 
   // value(level) -> what the upgrade does at that level; format(value) -> text shown in the shop.
   const LIST = [
     { key: 'damage',   name: 'GUN DAMAGE',   baseCost: 6,
-      desc: 'EACH BULLET DEALS +2 DAMAGE.',
-      value: lvl => 2 + 2 * lvl,                       // matches campaign.gunDamage for new saves
-      format: v => v + ' DMG',
-      live: (c, step) => (c.gunDamage + 2 * step) + ' DMG' },  // shop preview from the real stat
+      desc: () => cls().dmg === 1 ? 'EACH BULLET DEALS +2 DAMAGE.'
+                                  : '+2 BASE DAMAGE (x' + num(cls().dmg) + ' WITH THE ' + cls().weapon + ').',
+      value: lvl => 2 + 2 * lvl,                       // base damage (campaign.gunDamage for new saves)
+      format: v => dmgText(v, cls()),
+      live: (c, step) => dmgText(c.gunDamage + 2 * step, cls()) },  // real stat x class multiplier
     { key: 'armor',    name: 'ARMOR',        baseCost: 8,
       desc: 'TAKE 5% LESS DAMAGE FROM ENEMIES AND LASERS.',
       value: lvl => 0.05 * lvl,                        // fraction of damage blocked
       format: v => pct(v) + ' BLOCKED' },
     { key: 'speed',    name: 'SPEED',        baseCost: 6,
       desc: 'MOVE 5% FASTER.',
-      value: lvl => 1 + 0.05 * lvl,                    // move speed multiplier
+      value: lvl => cls().speed * (1 + 0.05 * lvl),    // move speed multiplier (class base x upgrades)
       format: v => pct(v) + ' SPEED' },
     { key: 'maxhp',    name: 'MAX HP',       baseCost: 6,
       desc: 'RAISE YOUR MAXIMUM HEALTH BY 15.',
@@ -34,15 +39,15 @@ window.RielUpgrades = (function () {
       live: (c, step) => (c.maxHp + 15 * step) + ' MAX HP' },  // includes boss HP bonuses
     { key: 'firerate', name: 'FIRE RATE',    baseCost: 8,
       desc: 'SHOOT 5% FASTER.',
-      value: lvl => Math.round(BASE_SHOOT_COOLDOWN * (1 - 0.05 * lvl)), // frames between shots
+      value: lvl => Math.max(2, Math.round(cls().fireCd * (1 - 0.05 * lvl))), // frames between shots
       format: v => (60 / v).toFixed(1) + ' SHOTS/S' },
     { key: 'ammo',     name: 'MAG SIZE',     baseCost: 6,
-      desc: 'HOLD 5 MORE BULLETS PER MAGAZINE.',
-      value: lvl => BASE_MAG_SIZE + 5 * lvl,           // bullets per magazine (20 -> 70)
+      desc: () => 'HOLD ' + magStep(cls()) + ' MORE BULLET' + (magStep(cls()) > 1 ? 'S' : '') + ' PER MAGAZINE.',
+      value: lvl => cls().mag + magStep(cls()) * lvl,  // bullets per magazine (pistol 20 -> 70)
       format: v => v + ' ROUNDS' },
     { key: 'reload',   name: 'RELOAD SPEED', baseCost: 6,
       desc: 'RELOAD 7% FASTER.',
-      value: lvl => Math.round(BASE_RELOAD_FRAMES * (1 - 0.07 * lvl)),  // reload time in frames
+      value: lvl => Math.round(cls().reload * (1 - 0.07 * lvl)),       // reload time in frames
       format: v => (v / 60).toFixed(1) + 'S RELOAD' },
   ];
   const BY_KEY = Object.fromEntries(LIST.map(u => [u.key, u]));
@@ -63,5 +68,6 @@ window.RielUpgrades = (function () {
   const cost   = (key, lvl) => Math.round(BY_KEY[key].baseCost * Math.pow(COST_GROWTH, lvl));
   const effect = (campaign, key) => BY_KEY[key].value(level(campaign, key));
 
-  return { MAX_LEVEL, LIST, BY_KEY, ensure, level, cost, effect };
+  const descOf = u => (typeof u.desc === 'function' ? u.desc() : u.desc);
+  return { MAX_LEVEL, LIST, BY_KEY, ensure, level, cost, effect, descOf, currentClass: cls };
 })();

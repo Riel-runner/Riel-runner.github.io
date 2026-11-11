@@ -33,15 +33,16 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   localStorage.removeItem('rielrunner_profile');
   await go('store.html');
   d = f.contentDocument;
-  ok(d.querySelectorAll('.tab').length === 3 && d.querySelectorAll('.store-card').length === 5, '3 tabs (weapon / player / trail), 5 items each');
-  ok(d.getElementById('gem-count').textContent === '0' && /EQUIPPED/.test(d.querySelector('.store-card').textContent), 'new profile: 0 gems, free STANDARD skin equipped');
+  ok(d.querySelectorAll('.tab').length === 4 && d.querySelectorAll('.store-card').length === 6, '4 tabs (classes / weapon / player / trail), 6 classes');
+  ok(d.getElementById('gem-count').textContent === '0' && /EQUIPPED/.test(d.querySelector('.store-card').textContent), 'new profile: 0 gems, free GUNNER class equipped');
   ok([...d.querySelectorAll('.store-btn.is-buy')].every(b => b.disabled), 'cannot buy anything with 0 gems');
-  ok(!/RIELS|LEVEL COMPLETE|UPGRADE/.test(d.body.textContent), 'shows none of the upgrade-shop stuff');
+  ok(!/RIELS|LEVEL COMPLETE|AVAILABLE UPGRADES/.test(d.body.textContent), 'shows none of the upgrade-shop stuff');
 
   // Buy and equip
   setProfile({ gems: 400 });
   await go('store.html');
   d = f.contentDocument;
+  d.querySelector('.tab[data-cat="weapon"]').click(); await wait(1500);
   d.querySelector('.store-btn[data-id="ruby"]').click(); await wait(1500);
   let p = profile();
   ok(p.gems === 200 && p.owned.weapon.includes('ruby') && p.equipped.weapon === 'ruby', 'buying RUBY (200): gems 400 -> 200, owned and equipped');

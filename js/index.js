@@ -8,6 +8,7 @@ const COS = window.RielCosmetics;
 const PLAYER_SKIN = COS.equipped('player');
 const WEAPON_SKIN = COS.equipped('weapon');
 const TRAIL_ID    = COS.equipped('trail').id;
+const PLAYER_CLASS = COS.equipped('class');     // gun shape (class weapon)
 
 // Enemy looks, matching the game (regular / runner / tank).
 const ENEMY_TYPES = {
@@ -109,7 +110,7 @@ function drawEnemy(e) {
 }
 
 const playerTop = () => FLOOR_Y - 8 * S;
-const muzzle = () => ({ x: player.x - player.recoil + 10 * S, y: playerTop() + 3 * S + Math.floor(S / 4) });
+const muzzle = () => ({ x: player.x - player.recoil + (PLAYER_CLASS.muzzle + 1) * S, y: playerTop() + 3 * S + Math.floor(S / 4) });
 
 // ─── UPDATE ──────────────────────────────────────────────────────────
 function nearestEnemy() {
@@ -210,7 +211,7 @@ function loop() {
   COS.drawTrail(trail, ctx, x => x);
   shadow(player.x + 5 * S, 6 * S);
   COS.drawPlayerSprite(ctx, player.x - player.recoil, playerTop(), S, PLAYER_SKIN, WEAPON_SKIN,
-                       { frame: Math.floor(tick / 7) % 3, gunFlash: player.gunFlash > 0 });
+                       { frame: Math.floor(tick / 7) % 3, gunFlash: player.gunFlash > 0, cls: PLAYER_CLASS });
 
   const bh = Math.max(3, Math.round(S / 2));
   for (const b of bullets) {
