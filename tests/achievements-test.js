@@ -113,6 +113,31 @@ const clearLevel = "npcs.forEach(n => { if (!n.dead) killNPC(n); });";
   E("levelStats.timeMs = 50000; campaign.shotsFired = (campaign.shotsFired || 0) + 20; campaign.shotsHit = (campaign.shotsHit || 0) + 10;" + clearLevel);
   ok(!has('sharpshooter'), '50% accuracy: no SHARPSHOOTER');
 
+  // ── ABILITY MASTER: only damage from abilities / while one is in action ──
+  const withShield = () => setProf({ gems: 0, life: { seeded: true }, abilities: { owned: { shield: { level: 1, copies: 0 }, lightning: { level: 1, copies: 0 } }, equipped: 'shield', slot2: true, equipped2: 'lightning' } });
+  const killAll = "npcs.forEach(n => { while (!n.dead) hitNPC(n, 1000); });";
+  withShield(); put({ ...base, mode: 'normal', level: 7 });
+  await go('game.html');
+  E("applyLevelEvent(null); gameState = 'playing'; useAbility(0);" + killAll);
+  ok(has('ability_only') && prof().gems >= 1000, 'level 7, every hit while Shield is active: ABILITY MASTER (+1,000 gems)');
+  withShield(); put({ ...base, mode: 'normal', level: 7 });
+  await go('game.html');
+  E("applyLevelEvent(null); gameState = 'playing'; hitNPC(npcs[0], 1); useAbility(0);" + killAll);
+  ok(!has('ability_only'), 'one hit with no ability active: no ABILITY MASTER');
+  withShield(); put({ ...base, mode: 'normal', level: 7 });
+  await go('game.html');
+  E("applyLevelEvent(null); gameState = 'playing'; npcs.forEach(n => n.frozen = 200);" + killAll);
+  ok(has('ability_only'), 'hits on frozen enemies count (Freeze does no damage itself)');
+  withShield(); put({ ...base, mode: 'normal', level: 7 });
+  await go('game.html');
+  E("applyLevelEvent(null); gameState = 'playing'; npcs.forEach(n => { n.x = player.x + 40; n.y = GROUND_Y - n.h; n.hp = 1; }); camX = Math.max(0, player.x - 200); useAbility(1);");
+  ok(E("npcs.every(n => n.dead)") ? has('ability_only') : E('levelStats.plainDmg') === 0 && E('levelStats.abilityDmg') > 0, 'Chain Lightning damage counts as ability damage');
+  withShield(); put({ ...base, mode: 'normal', level: 4 });
+  await go('game.html');
+  E("applyLevelEvent(null); gameState = 'playing'; useAbility(0);" + killAll);
+  ok(!has('ability_only'), 'ABILITY MASTER needs level 5 or higher');
+  ok(E('levelStats.plainDmg') === 0, 'level stats track plain damage separately');
+
   // ── Kills: mid-level unlock shows as a toast ──
   fresh({ kills: 99 });
   put({ ...base, mode: 'normal', level: 4 });
