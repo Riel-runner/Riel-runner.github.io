@@ -184,42 +184,54 @@ const lasers = [];
 const LASER_DAMAGE_PCT = 0.10;     // 10% of max HP per tick
 const LASER_TICK_FRAMES = 30;      // every 0.5s at 60fps
 
-// Lasers are placed on purpose (not randomly) and are always avoidable:
-//  - GROUND lasers: short, low beams spread evenly through the level. Jump over them
-//    (a normal jump clears ~120px) or wait for them to switch off.
-//  - PLATFORM lasers: cover only one end of a platform, so part of it is always safe.
-// Each laser is ON for 5s then OFF for 3s, flickering for the last 0.75s before it comes
-// back on. Neighbouring lasers are out of step, so there's always a gap to time.
+// Vertical laser barriers are anchored directly to platform edges.
+// Their horizontal position is never picked independently: each beam sits on the
+// left or right edge of a selected platform and extends down to the ground.
+// Each laser is ON for 5s then OFF for 3s, flickering for the last 0.75s before it
+// comes back on. Their timers are staggered so there is always a gap to time.
 const LASER_ON_FRAMES   = 5 * 60;
 const LASER_OFF_FRAMES  = 3 * 60;
 const LASER_CYCLE       = LASER_ON_FRAMES + LASER_OFF_FRAMES;
 const LASER_WARN_FRAMES = 45;
-const GROUND_LASER_W    = 56;
+const LASER_BEAM_W      = 6;
 
 function generateLasers() {
   lasers.length = 0;
   const level = campaign.level || 1;
-  const count = Math.min(5, 2 + Math.floor(level / 20));       // 2 early on, up to 5 in later stages
-  const usable = platforms.filter(p => p.x > 500 && p.x + p.w < LEVEL_WIDTH - 300);
+  const count = Math.min(5, 2 + Math.floor(level / 20)); // 2 early on, up to 5 in later stages
+  const usable = platforms
+    .filter(p => p.x > 500 && p.x + p.w < LEVEL_WIDTH - 300)
+    .slice()
+    .sort((a, b) => a.x - b.x);
   const used = new Set();
-  for (let i = 0; i < count; i++) {
-    const targetX = 650 + (i + 0.5) * (LEVEL_WIDTH - 1000) / count; // evenly spaced, clear of the start
-    const t = Math.floor(i * LASER_CYCLE / count);                   // stagger the on/off timing
-    const base = { h: 6, t, lastDamageFrame: -LASER_TICK_FRAMES };
-    const plat = i % 2 === 1 && usable.filter(p => !used.has(p))
-      .sort((a, b) => Math.abs(a.x - targetX) - Math.abs(b.x - targetX))[0];
-    if (plat) {
-      used.add(plat);
-      const w = Math.round(plat.w * 0.4);
-      const x = i % 4 === 1 ? plat.x : plat.x + plat.w - w;          // left or right end only
-      lasers.push({ ...base, kind: 'platform', x, y: plat.y - 12, w });
-    } else {
-      let x = Math.round(targetX - GROUND_LASER_W / 2);
-      // Keep ground lasers out from under platforms so the jump over them is clean.
-      const over = platforms.find(p => x + GROUND_LASER_W > p.x - 12 && x < p.x + p.w + 12);
-      if (over) x = Math.round(over.x + over.w + 24);
-      lasers.push({ ...base, kind: 'ground', x: Math.min(x, LEVEL_WIDTH - 350), y: GROUND_Y - 20, w: GROUND_LASER_W });
-    }
+
+  for (let i = 0; i < count && used.size < usable.length; i++) {
+    // Choose a platform near an even interval through the level, not a free-floating X.
+    const targetX = 650 + (i + 0.5) * (LEVEL_WIDTH - 1000) / count;
+    const plat = usable
+      .filter(p => !used.has(p))
+      .sort((a, b) => Math.abs((a.x + a.w / 2) - targetX) - Math.abs((b.x + b.w / 2) - targetX))[0];
+    if (!plat) continue;
+
+    used.add(plat);
+    const edge = i % 2 === 0 ? 'left' : 'right';
+    const x = Math.round(
+      (edge === 'left' ? plat.x : plat.x + plat.w) - LASER_BEAM_W / 2
+    );
+    const y = plat.y;
+    const h = Math.max(1, GROUND_Y - plat.y);
+    const t = Math.floor(i * LASER_CYCLE / count);
+
+    lasers.push({
+      kind: 'platform-edge',
+      orientation: 'vertical',
+      edge,
+      x, y,
+      w: LASER_BEAM_W,
+      h,
+      t,
+      lastDamageFrame: -LASER_TICK_FRAMES
+    });
   }
 }
 
@@ -256,28 +268,28 @@ function drawLasers() {
     const on = laserOn(laser);
     if (on) {
       const pulse = Math.sin(frameCount * 0.1) * 0.3 + 0.7;
-      // Outer glow
+      // Vertical beam glow and core.
       ctx.fillStyle = `rgba(255,50,50,${pulse * 0.5})`;
       ctx.fillRect(sx - 2, laser.y - 2, laser.w + 4, laser.h + 4);
-      // Core beam
       ctx.fillStyle = `rgba(255,80,80,${pulse * 0.9})`;
       ctx.fillRect(sx, laser.y, laser.w, laser.h);
-      // Bright centre line
       ctx.fillStyle = `rgba(255,220,220,${pulse})`;
-      ctx.fillRect(sx, laser.y + 2, laser.w, laser.h - 4);
+      ctx.fillRect(sx + 2, laser.y, Math.max(1, laser.w - 4), laser.h);
     } else if (laserWarn(laser) && frameCount % 8 < 4) {
-      // About to switch back on: thin flickering warning beam
+      // About to switch back on: thin flickering vertical warning beam.
       ctx.fillStyle = 'rgba(255,80,80,0.45)';
-      ctx.fillRect(sx, laser.y + 2, laser.w, laser.h - 4);
+      ctx.fillRect(sx + 2, laser.y, Math.max(1, laser.w - 4), laser.h);
     } else {
-      // Off: faint dotted guide so you can see where it will be
+      // Off: faint dotted vertical guide so the beam location remains visible.
       ctx.fillStyle = 'rgba(255,80,80,0.18)';
-      for (let x = 0; x < laser.w; x += 6) ctx.fillRect(sx + x, laser.y + 2, 3, 2);
+      for (let y = 0; y < laser.h; y += 6) {
+        ctx.fillRect(sx + 2, laser.y + y, Math.max(1, laser.w - 4), 3);
+      }
     }
-    // Emitters (pixel art end caps): bright when on, dim when off
+    // Emitters sit at the top and bottom of each vertical beam.
     ctx.fillStyle = on ? '#ff3232' : '#5a2020';
-    ctx.fillRect(sx - 3, laser.y - 1, 5, laser.h + 2);
-    ctx.fillRect(sx + laser.w - 2, laser.y - 1, 5, laser.h + 2);
+    ctx.fillRect(sx - 1, laser.y - 3, laser.w + 2, 5);
+    ctx.fillRect(sx - 1, laser.y + laser.h - 2, laser.w + 2, 5);
   }
 }
 
@@ -2599,8 +2611,14 @@ function restoreLevelState() {
   const s = campaign.levelState;
   if (!s || s.level !== campaign.level || !Array.isArray(s.npcs) || !s.player) return false;
   platforms.length = 0; platforms.push(...s.platforms);
-  // Frame-based timers restart from 0 on a fresh page, so reset them.
-  lasers.length = 0;    lasers.push(...s.lasers.map(l => ({ kind: 'ground', ...l, t: l.t || 0, lastDamageFrame: -LASER_TICK_FRAMES })));
+  // Keep saved vertical lasers as-is. Older saves used horizontal beams, so
+  // regenerate those from the restored platforms using the new edge placement.
+  lasers.length = 0;
+  if (Array.isArray(s.lasers) && s.lasers.length && s.lasers.every(l => l.orientation === 'vertical')) {
+    lasers.push(...s.lasers.map(l => ({ ...l, t: l.t || 0, lastDamageFrame: -LASER_TICK_FRAMES })));
+  } else {
+    generateLasers();
+  }
   powerups.length = 0;  powerups.push(...s.powerups);
   npcs.length = 0;      npcs.push(...s.npcs.map(n => ({ ...n, nextDodgeRoll: 0 })));
   Object.assign(player, s.player);
