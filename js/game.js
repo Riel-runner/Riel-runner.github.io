@@ -92,6 +92,142 @@ const DASH_DURATION  = 10;           // frames the dash lasts
 const GAME_VERSION   = 'V7';
 
 // ═══════════════════════════════════════════════════════════════
+//  LEVEL EVENTS
+//  One random modifier is rolled each level and shown to the player
+//  as a banner before they start moving. Events hook into existing
+//  multipliers wherever possible so they play nicely with upgrades.
+// ═══════════════════════════════════════════════════════════════
+const LEVEL_EVENTS = [
+  {
+    id:    'double_riels',
+    label: '💰 RIEL RUSH',
+    desc:  'ALL ENEMY KILLS PAY DOUBLE THIS LEVEL!',
+    color: '#f5c400',
+    apply() { levelEvent.rielMult = 2; },
+  },
+  {
+    id:    'enemy_speed',
+    label: '⚡ FRENZY',
+    desc:  'ENEMIES MOVE 50% FASTER. STAY SHARP!',
+    color: '#e74c3c',
+    apply() { levelEvent.enemySpeedMult = 1.5; },
+  },
+  {
+    id:    'low_gravity',
+    label: '🌙 LOW GRAVITY',
+    desc:  'GRAVITY REDUCED. JUMP FAR, FALL SLOW.',
+    color: '#8e44ad',
+    apply() { levelEvent.gravityMult = 0.45; },
+  },
+  {
+    id:    'glass_cannon',
+    label: '💥 GLASS CANNON',
+    desc:  'YOUR SHOTS HIT TWICE AS HARD, BUT YOU TAKE 40% MORE DAMAGE!',
+    color: '#e67e22',
+    apply() { levelEvent.playerDmgMult = 2; levelEvent.playerDamageTakenMult = 1.4; },
+  },
+  {
+    id:    'enemy_glass',
+    label: '🔪 PAPER ENEMIES',
+    desc:  'ENEMIES HAVE HALF HEALTH THIS LEVEL!',
+    color: '#2ecc71',
+    apply() { levelEvent.enemyHpMult = 0.5; },
+  },
+  {
+    id:    'no_auto_aim',
+    label: '🎯 MANUAL AIM',
+    desc:  'AUTO-AIM IS OFF. USE YOUR MOUSE TO AIM.',
+    color: '#5dade2',
+    apply() { levelEvent.forceManualAim = true; },
+  },
+  {
+    id:    'bonus_enemies',
+    label: '🌊 HORDE',
+    desc:  'DOUBLE THE ENEMIES — DOUBLE THE RIELS!',
+    color: '#c0392b',
+    apply() { levelEvent.extraEnemyMult = 2; levelEvent.rielMult = (levelEvent.rielMult || 1) * 2; },
+  },
+  {
+    id:    'fast_fire',
+    label: '🔥 RAPID FIRE',
+    desc:  'YOUR FIRE RATE IS DOUBLED THIS LEVEL!',
+    color: '#27ae60',
+    apply() { levelEvent.fireRateMult = 0.5; },   // multiplies shoot cooldown (lower = faster)
+  },
+];
+
+// Active event state (filled by pickLevelEvent, read throughout the loop)
+const levelEvent = {
+  id:                   'none',
+  label:                '',
+  desc:                 '',
+  color:                '#e8e8d0',
+  rielMult:             1,
+  enemySpeedMult:       1,
+  gravityMult:          1,
+  playerDmgMult:        1,
+  playerDamageTakenMult:1,
+  enemyHpMult:          1,
+  extraEnemyMult:       1,
+  fireRateMult:         1,
+  forceManualAim:       false,
+};
+
+// Banner shown at level start
+let eventBannerTimer = 0;
+const EVENT_BANNER_FRAMES = 220; // ~3.6s
+
+function pickLevelEvent() {
+  // No event on tutorial levels (1-2) or boss levels
+  if (campaign.level <= 2 || campaign.level % 10 === 0) return;
+  const ev = LEVEL_EVENTS[Math.floor(Math.random() * LEVEL_EVENTS.length)];
+  levelEvent.id    = ev.id;
+  levelEvent.label = ev.label;
+  levelEvent.desc  = ev.desc;
+  levelEvent.color = ev.color;
+  ev.apply();
+  eventBannerTimer = EVENT_BANNER_FRAMES;
+}
+
+function drawEventBanner() {
+  if (eventBannerTimer <= 0 || levelEvent.id === 'none') return;
+  eventBannerTimer--;
+  const alpha = Math.min(1, eventBannerTimer / 30) * Math.min(1, (EVENT_BANNER_FRAMES - eventBannerTimer + 1) / 20);
+  const cx = BASE_W / 2;
+  const by = 60;
+
+  ctx.globalAlpha = alpha;
+  // Backing panel
+  ctx.fillStyle = '#0f1526';
+  ctx.fillRect(cx - 230, by, 460, 52);
+  // Accent bar on top
+  ctx.fillStyle = levelEvent.color;
+  ctx.fillRect(cx - 230, by, 460, 3);
+  ctx.fillRect(cx - 230, by + 49, 460, 3);
+  // Label
+  ctx.textAlign = 'center';
+  ctx.font = '9px "Public Pixel", monospace';
+  ctx.fillStyle = levelEvent.color;
+  ctx.fillText(levelEvent.label, cx, by + 18);
+  // Description
+  ctx.font = '6px "Public Pixel", monospace';
+  ctx.fillStyle = '#e8e8d0';
+  ctx.fillText(levelEvent.desc, cx, by + 36);
+  ctx.textAlign = 'left';
+  ctx.globalAlpha = 1;
+}
+
+// Show active event as a small badge in the HUD (top-right, below level/riels)
+function drawEventHUDBadge() {
+  if (levelEvent.id === 'none' || gameState !== 'playing') return;
+  ctx.font = '5px "Public Pixel", monospace';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = levelEvent.color;
+  ctx.fillText(levelEvent.label, BASE_W - 10, PAUSE_BTN.y + PAUSE_BTN.h + 90);
+  ctx.textAlign = 'left';
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  WORLD / CAMERA
 // ═══════════════════════════════════════════════════════════════
 let camX = 0;   // camera left edge in world coords
@@ -359,8 +495,8 @@ function updatePlayer() {
   // Dash cooldown tick
   if (player.dashCooldown > 0) player.dashCooldown--;
 
-  // Gravity
-  player.vy += GRAVITY;
+  // Gravity (modified by low-gravity event)
+  player.vy += GRAVITY * (levelEvent.gravityMult || 1);
   player.x  += player.vx;
   player.y  += player.vy;
 
@@ -420,7 +556,7 @@ function updatePlayer() {
   const wantShoot = keys['Space'] || mouseDown;
   if (wantShoot && player.shootTimer <= 0) {
     firePlayerBullet();
-    player.shootTimer = PLAYER_SHOOT_CD; // SHOOT_COOLDOWN reduced by the Fire Rate upgrade
+    player.shootTimer = Math.max(4, Math.round(PLAYER_SHOOT_CD * (levelEvent.fireRateMult || 1))); // SHOOT_COOLDOWN reduced by the Fire Rate upgrade and fast-fire event
   }
 
   // Camera: keep player centred-ish
@@ -532,7 +668,7 @@ function firePlayerBullet() {
 
   let dx = 1, dy = 0;
 
-  if (settings.autoAim) {
+  if (settings.autoAim && !levelEvent.forceManualAim) {
     // Find closest NPC
     let closest = null, bestDist = Infinity;
     for (const n of npcs) {
@@ -666,8 +802,10 @@ function spawnNPCs() {
   // Spread NPCs evenly — roughly 1 tank per 4 normal NPCs.
   // Once runners unlock at level 11, guarantee one in every regular (non-boss) level.
   // Other unlocked special types continue to be selected randomly for the remaining slots.
-  const zone = (LEVEL_WIDTH - 400) / NPC_COUNT;
-  for (let i = 0; i < NPC_COUNT; i++) {
+  // The HORDE event can multiply the spawn count (capped at 30 to keep it playable).
+  const spawnCount = Math.min(Math.round(NPC_COUNT * (levelEvent.extraEnemyMult || 1)), 30);
+  const zone = (LEVEL_WIDTH - 400) / spawnCount;
+  for (let i = 0; i < spawnCount; i++) {
     const wx = 500 + i * zone + Math.random() * (zone * 0.6);
     const isTank = (i % 4 === 3); // every 4th NPC is a tank
     const kind = isTank ? 'normal'
@@ -709,7 +847,7 @@ function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank =
   const tankHp       = dynamicNpcHp * 3;  // 3x normal HP
   const hpBase = isBoss
     ? (customHp || (BOSS_BASE_HP + (Math.floor(lvlNow / 10) - 1) * BOSS_HP_PER))
-    : isTank ? tankHp : Math.round(dynamicNpcHp * (k ? k.hp : 1));
+    : isTank ? Math.round(tankHp * (levelEvent.enemyHpMult || 1)) : Math.round(dynamicNpcHp * (k ? k.hp : 1) * (levelEvent.enemyHpMult || 1));
   const dmgBase = isBoss
     ? (customDmg || (BOSS_BASE_DMG + (Math.floor(lvlNow / 10) - 1) * BOSS_DMG_PER))
     : (0.5 * lvlNow); // tanks deal same contact damage as normals
@@ -853,7 +991,7 @@ function updateNPCs() {
 
     // Vertical physics (plus horizontal momentum for committed jumps: vaults, leaps)
     if (!n.onGround) {
-      n.vy += GRAVITY * 0.9; // slightly lighter gravity for NPCs
+      n.vy += GRAVITY * 0.9 * (levelEvent.gravityMult || 1); // slightly lighter gravity for NPCs
       n.y += n.vy;
       n.x += n.vx || 0;
     }
@@ -919,8 +1057,9 @@ function updateNPCs() {
           break;
         }
         addStat('shotsHit');
-        n.hp -= player.gunDamage;
-        spawnDmgNumber(n.x, n.y - 4, player.gunDamage, '#f5c400');
+        const shotDmg = player.gunDamage * (levelEvent.playerDmgMult || 1);
+        n.hp -= shotDmg;
+        spawnDmgNumber(n.x, n.y - 4, shotDmg, '#f5c400');
         alertNPC(n, true); // getting shot always gets their attention (and their friends')
         if (n.hp <= 0) killNPC(n);
         break;
@@ -1051,7 +1190,7 @@ function aiMove(n) {
   const px = playerCX(), cx = centerX(n);
   const side = cx < px ? -1 : 1; // which side of the player this enemy is on
   let targetX = px;
-  let speed = NPC_SPEED * (n.speedMult || (n.isTank ? 0.45 : 1)); // per enemy type
+  let speed = NPC_SPEED * (n.speedMult || (n.isTank ? 0.45 : 1)) * (levelEvent.enemySpeedMult || 1); // per enemy type
   let stopDist = n.w * 0.6;      // close enough to touch the player
   let chasing = true;            // false while keeping away (no jumping at the player)
 
@@ -1404,7 +1543,7 @@ function separateNPCs() {
 function killNPC(n) {
   n.dead      = true;
   n.deadTimer = 0;
-  const reward = n.rielReward || 2;
+  const reward = Math.round((n.rielReward || 2) * (levelEvent.rielMult || 1));
   campaign.riels += reward;
   addStat('enemiesKilled');
   addStat('rielsEarned', reward);
@@ -1518,7 +1657,7 @@ function goToVictory() {
 // Returns the damage actually taken (after the Armor upgrade).
 function damagePlayer(amount, isTick) {
   if (player.dead) return 0;
-  amount *= 1 - ARMOR_BLOCK;
+  amount *= (1 - ARMOR_BLOCK) * (levelEvent.playerDamageTakenMult || 1);
   player.hp -= amount;
   player.hitFlash = 20;
   if (player.hp <= 0) {
@@ -2182,6 +2321,7 @@ function drawPauseMenu() {
     ['GUN DMG',   player.gunDamage],
     ['UPGRADES',  campaign.upgradeCount || 0],
     ['BOSSES',    (campaign.bossesBeaten || 0) + ' / 10'],
+    ['EVENT',     levelEvent.id === 'none' ? 'NONE' : levelEvent.label],
   ];
   const colL = panelX + 24;
   const colR = panelX + panelW / 2 + 10;
@@ -2570,6 +2710,9 @@ function generatePowerups() {
 // call now
 generatePowerups();
 
+// Pick a random level event and apply its effects
+pickLevelEvent();
+
 // ═══════════════════════════════════════════════════════════════
 //  MID-LEVEL SAVE / RESUME
 // ═══════════════════════════════════════════════════════════════
@@ -2683,7 +2826,9 @@ function loop() {
   updateDrawRielParticles();
   updateDrawDmgNumbers();
   drawHUD();
+  drawEventHUDBadge();
   drawToast();
+  drawEventBanner();
   drawOverlay();
   drawPauseMenu();
   drawPauseButton(); // on top, so it can also be clicked to resume
