@@ -75,9 +75,36 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   ok(kept === 4, 'resuming keeps the same event every time, without its banner again (' + kept + ' / 4)');
   ok(clean === 4, 'the event rolled on load is fully undone, effects never stack (' + clean + ' / 4)');
 
+  // ── DOUBLE EVENT after level 50 ──
+  let counts = { 49: new Set(), 51: new Set(), 60: new Set() }, distinct = true, applied = true;
+  for (const lvl of [49, 51, 51, 51, 60]) {
+    put({ ...base, level: lvl, lives: 3, hp: 170 });
+    await go('game.html');
+    const ev = JSON.parse(f.contentWindow.eval("JSON.stringify({ ids: levelEvent.list.map(e => e.id), g: levelEvent.gravityMult, s: levelEvent.enemySpeedMult, r: levelEvent.rielMult, a: levelEvent.forceManualAim, f: levelEvent.fireRateMult, h: levelEvent.enemyHpMult, x: levelEvent.extraEnemyMult, d: levelEvent.playerDmgMult })"));
+    counts[lvl].add(ev.ids.length);
+    if (ev.ids.length === 2 && ev.ids[0] === ev.ids[1]) distinct = false;
+    // every listed event's effect is really on
+    const on = { double_riels: ev.r >= 2, enemy_speed: ev.s === 1.5, low_gravity: ev.g === 0.45, glass_cannon: ev.d === 2, enemy_glass: ev.h === 0.5, no_auto_aim: ev.a, bonus_enemies: ev.x === 2, fast_fire: ev.f === 0.5 };
+    if (!ev.ids.every(id => on[id])) applied = false;
+  }
+  ok([...counts[49]].join() === '1' && [...counts[51]].join() === '2', 'level 49: one event; level 51+: two at once (DOUBLE EVENT)');
+  ok([...counts[60]].join() === '0', 'boss levels still have no event');
+  ok(distinct && applied, 'the two events are different and both take effect');
+  put({ ...base, level: 55, lives: 3, hp: 170 });
+  await go('game.html');
+  w = f.contentWindow;
+  w.eval("applyLevelEvent([LEVEL_EVENTS.find(e => e.id === 'double_riels'), LEVEL_EVENTS.find(e => e.id === 'bonus_enemies')]);");
+  ok(w.eval('levelEvent.rielMult') === 4, 'RIEL RUSH + HORDE stack: kills pay 4x');
+  w.eval("applyLevelEvent([LEVEL_EVENTS.find(e => e.id === 'low_gravity'), LEVEL_EVENTS.find(e => e.id === 'enemy_speed')]); eventBannerTimer = 100; drawEventBanner(); gameState = 'paused'; drawPauseMenu(); gameState = 'playing'; PAUSE_ITEMS[1].action();");
+  await until(() => /settings\.html/.test(f.contentWindow.location.href));
+  ok(JSON.stringify(JSON.parse(localStorage.getItem('activeCampaign')).levelState.eventIds) === '["low_gravity","enemy_speed"]', 'both events are saved with the level');
+  await go('game.html');
+  ok(f.contentWindow.eval("levelEvent.list.map(e => e.id).join() === 'low_gravity,enemy_speed' && levelEvent.gravityMult === 0.45 && levelEvent.enemySpeedMult === 1.5 && eventBannerTimer === 0"), 'resuming keeps both events (no banner replay)');
+  ok(/LOW GRAVITY \+ .*FRENZY/.test(f.contentWindow.eval('eventLabels()')), 'pause menu lists both: ' + f.contentWindow.eval('eventLabels()'));
+
   // ── HORDE / PAPER ENEMIES apply to the enemies that spawn (event picked before spawning) ──
   let horde = null, paper = null;
-  for (let i = 0; i < 40 && (!horde || !paper); i++) {
+  for (let i = 0; i < 100 && (!horde || !paper); i++) {   // random events: keep reloading until both have come up
     put({ ...base, level: 6, lives: 3, hp: 170 });
     await go('game.html');
     const r = JSON.parse(f.contentWindow.eval("JSON.stringify({ id: levelEvent.id, n: npcs.length, want: Math.min(NPC_COUNT * 2, 30), hp: npcs.filter(n => n.kind === 'normal' && !n.isTank).map(n => n.maxHp || n.hp), full: NPC_HP })"));
@@ -102,6 +129,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=90000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=150000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));

@@ -149,7 +149,7 @@ const LEVEL_EVENTS = [
     label: '💰 RIEL RUSH',
     desc:  'ALL ENEMY KILLS PAY DOUBLE THIS LEVEL!',
     color: '#f5c400',
-    apply() { levelEvent.rielMult = 2; },
+    apply() { levelEvent.rielMult = (levelEvent.rielMult || 1) * 2; },  // stacks with HORDE (x4)
   },
   {
     id:    'enemy_speed',
@@ -202,9 +202,12 @@ const LEVEL_EVENTS = [
   },
 ];
 
-// Active event state (filled by pickLevelEvent, read throughout the loop)
+// Active event state (filled by pickLevelEvent, read throughout the loop).
+// id / label / desc / color are the first event's; list holds every active event
+// (two after level 50: DOUBLE EVENT).
 const levelEvent = {
   id:                   'none',
+  list:                 [],
   label:                '',
   desc:                 '',
   color:                '#e8e8d0',
@@ -225,23 +228,33 @@ const EVENT_BANNER_FRAMES = 220; // ~3.6s
 
 const LEVEL_EVENT_DEFAULTS = { ...levelEvent };
 
+const DOUBLE_EVENT_AFTER = 50;   // levels above this roll two different events at once
+
 function pickLevelEvent() {
   // No event on tutorial levels (1-2) or boss levels
   if (campaign.level <= 2 || campaign.level % 10 === 0) return;
-  applyLevelEvent(LEVEL_EVENTS[Math.floor(Math.random() * LEVEL_EVENTS.length)]);
+  const pool = LEVEL_EVENTS.slice(), picked = [];
+  const count = campaign.level > DOUBLE_EVENT_AFTER ? 2 : 1;
+  while (picked.length < count) picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  applyLevelEvent(picked);
   eventBannerTimer = EVENT_BANNER_FRAMES;
 }
 
-// Make ev the active event (starting from no event, so effects never stack).
+// Make ev (one event or a list of them) the active event(s), starting from no event,
+// so a re-applied event never stacks on itself.
 function applyLevelEvent(ev) {
   Object.assign(levelEvent, LEVEL_EVENT_DEFAULTS);
-  if (!ev) return;
-  levelEvent.id    = ev.id;
-  levelEvent.label = ev.label;
-  levelEvent.desc  = ev.desc;
-  levelEvent.color = ev.color;
-  ev.apply();
+  levelEvent.list = [];
+  const list = (Array.isArray(ev) ? ev : [ev]).filter(Boolean);
+  if (!list.length) return;
+  levelEvent.id    = list[0].id;
+  levelEvent.label = list[0].label;
+  levelEvent.desc  = list[0].desc;
+  levelEvent.color = list[0].color;
+  levelEvent.list  = list.map(e => ({ id: e.id, label: e.label, desc: e.desc, color: e.color }));
+  for (const e of list) e.apply();
 }
+const eventLabels = () => levelEvent.list.map(e => e.label).join(' + ');
 
 function drawEventBanner() {
   if (eventBannerTimer <= 0 || levelEvent.id === 'none') return;
@@ -250,34 +263,49 @@ function drawEventBanner() {
   const cx = BASE_W / 2;
   const by = 60;
 
+  const list = levelEvent.list.length ? levelEvent.list : [levelEvent];
+  const double = list.length > 1;
+  const panelH = double ? 96 : 52;            // DOUBLE EVENT: title line + two events
+
   ctx.globalAlpha = alpha;
   // Backing panel
   ctx.fillStyle = '#0f1526';
-  ctx.fillRect(cx - 230, by, 460, 52);
-  // Accent bar on top
-  ctx.fillStyle = levelEvent.color;
+  ctx.fillRect(cx - 230, by, 460, panelH);
+  // Accent bars (top in the first event's colour, bottom in the last's)
+  ctx.fillStyle = list[0].color;
   ctx.fillRect(cx - 230, by, 460, 3);
-  ctx.fillRect(cx - 230, by + 49, 460, 3);
-  // Label
+  ctx.fillStyle = list[list.length - 1].color;
+  ctx.fillRect(cx - 230, by + panelH - 3, 460, 3);
   ctx.textAlign = 'center';
-  ctx.font = '9px "Public Pixel", monospace';
-  ctx.fillStyle = levelEvent.color;
-  ctx.fillText(levelEvent.label, cx, by + 18);
-  // Description
-  ctx.font = '6px "Public Pixel", monospace';
-  ctx.fillStyle = '#e8e8d0';
-  ctx.fillText(levelEvent.desc, cx, by + 36);
+  let y = by + 18;
+  if (double) {
+    ctx.font = '6px "Public Pixel", monospace';
+    ctx.fillStyle = '#f5c400';
+    ctx.fillText('DOUBLE EVENT!', cx, by + 15);
+    y = by + 34;
+  }
+  for (const ev of list) {
+    ctx.font = '9px "Public Pixel", monospace';      // label
+    ctx.fillStyle = ev.color;
+    ctx.fillText(ev.label, cx, y);
+    ctx.font = '6px "Public Pixel", monospace';      // description
+    ctx.fillStyle = '#e8e8d0';
+    ctx.fillText(ev.desc, cx, y + (double ? 14 : 18));
+    y += 34;
+  }
   ctx.textAlign = 'left';
   ctx.globalAlpha = 1;
 }
 
-// Show active event as a small badge in the HUD (top-right, below level/riels)
+// Show active event(s) as small badges in the HUD (top-right, below level/riels)
 function drawEventHUDBadge() {
   if (levelEvent.id === 'none' || gameState !== 'playing') return;
   ctx.font = '5px "Public Pixel", monospace';
   ctx.textAlign = 'right';
-  ctx.fillStyle = levelEvent.color;
-  ctx.fillText(levelEvent.label, BASE_W - 10, PAUSE_BTN.y + PAUSE_BTN.h + 90);
+  (levelEvent.list.length ? levelEvent.list : [levelEvent]).forEach((ev, i) => {
+    ctx.fillStyle = ev.color;
+    ctx.fillText(ev.label, BASE_W - 10, PAUSE_BTN.y + PAUSE_BTN.h + 90 + i * 10);
+  });
   ctx.textAlign = 'left';
 }
 
@@ -2749,7 +2777,7 @@ function drawPauseMenu() {
     ['GUN DMG',   (Math.round(classDamage() * 10) / 10) + (PLAYER_CLASS.pellets ? ' x' + PLAYER_CLASS.pellets : '') + ' ' + PLAYER_CLASS.weapon],
     ['UPGRADES',  campaign.upgradeCount || 0],
     ['BOSSES',    (campaign.bossesBeaten || 0) + ' / 10'],
-    ['EVENT',     levelEvent.id === 'none' ? 'NONE' : levelEvent.label],
+    ['EVENT',     levelEvent.id === 'none' ? 'NONE' : eventLabels()],   // both after level 50
   ];
   const colL = panelX + 24;
   const colR = panelX + panelW / 2 + 10;
@@ -3202,7 +3230,7 @@ function saveLevelProgress() {
   campaign.levelState = {
     level: campaign.level, savedAt: Date.now(), camX, player: p,
     npcs: npcs.map(n => ({ ...n })), platforms, lasers, powerups, stats: levelStats,
-    eventId: levelEvent.id,
+    eventId: levelEvent.id, eventIds: levelEvent.list.map(e => e.id),
   };
   campaign.hp = Math.ceil(player.hp);
   campaign.maxHp = player.maxHp;
@@ -3230,8 +3258,9 @@ function restoreLevelState() {
   player.vx = 0;
   // Keep the level's event (it was re-rolled when the page loaded). Old saves don't
   // have one, so they keep the new roll.
-  if (s.eventId) {
-    applyLevelEvent(LEVEL_EVENTS.find(e => e.id === s.eventId));
+  const savedEvents = Array.isArray(s.eventIds) && s.eventIds.length ? s.eventIds : s.eventId ? [s.eventId] : null;
+  if (savedEvents) {        // eventIds: both events of a DOUBLE EVENT level (older saves: eventId)
+    applyLevelEvent(savedEvents.map(id => LEVEL_EVENTS.find(e => e.id === id)));
     eventBannerTimer = 0;   // already seen when the level started
   }
   // Older saves have no level clock: that level can't earn speed/no-damage achievements.

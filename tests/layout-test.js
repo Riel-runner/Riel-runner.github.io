@@ -115,8 +115,8 @@ function domReport(label, W, root) {
         put({ ...base, mode, level: mode === 'bossrush' ? 30 : 46, lives: 5, overHp: 70, playTimeMs: 3723000 });
         await go('game.html', w, h);
         const W = f.contentWindow; instrument(W);
-        const tag = mode + (touch ? ' +touch' : '') + ' ' + w + 'x' + h;
-        W.eval("gameState = 'playing'; applyLevelEvent(LEVEL_EVENTS.find(e => e.id === 'bonus_enemies')); player.reloadTimer = 0; player.bullets = 3; player.jumpPowerTimer = 900; player.jumpMult = 1.5; player.speedPowerTimer = 600; player.speedMult = 2; player.dashCooldown = 100; player.ability2Cd = 600; player.abilityTime = 200; eventBannerTimer = 0; toastTimer2 = 0;");
+        const tag = mode + (mode === 'endless' || mode === 'bossrush' ? ' (double event)' : '') + (touch ? ' +touch' : '') + ' ' + w + 'x' + h;
+        W.eval("gameState = 'playing'; " + (mode === 'endless' || mode === 'bossrush' ? "applyLevelEvent(['glass_cannon', 'enemy_glass'].map(id => LEVEL_EVENTS.find(e => e.id === id)));" : "applyLevelEvent(LEVEL_EVENTS.find(e => e.id === 'bonus_enemies'));") + " player.reloadTimer = 0; player.bullets = 3; player.jumpPowerTimer = 900; player.jumpMult = 1.5; player.speedPowerTimer = 600; player.speedMult = 2; player.dashCooldown = 100; player.ability2Cd = 600; player.abilityTime = 200; eventBannerTimer = 0; toastTimer2 = 0;");
         report('HUD ' + tag, frame(W, HUD), W);
         W.eval("player.reloadTimer = 60; eventBannerTimer = 120; showToast('ACHIEVEMENT: NO SECOND CHANCES  +500 GEMS', 120);");
         report('HUD+banner+toast+reload ' + tag, frame(W, HUD), W);
@@ -125,8 +125,8 @@ function domReport(label, W, root) {
         report('LEVEL COMPLETE overlay', frame(W, HUD), W);
         W.eval("gameState = 'boss_slayed'; stateTimer = 110;");
         report('BOSS SLAYED overlay', frame(W, HUD), W);
-        W.eval("gameState = 'paused'; stateTimer = 40;");
-        report('PAUSE menu', frame(W, HUD), W);
+        W.eval("applyLevelEvent(['glass_cannon', 'enemy_glass'].map(id => LEVEL_EVENTS.find(e => e.id === id))); gameState = 'paused'; stateTimer = 40;");
+        report('PAUSE menu (double event)', frame(W, HUD), W);
         W.eval("gameState = 'you_win'; stateTimer = 40;");
         report('CAMPAIGN COMPLETE overlay', frame(W, HUD), W);
         W.eval("gameState = 'playing'; handleCampaignOver(); showDeathScreen();");
