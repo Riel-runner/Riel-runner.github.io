@@ -291,20 +291,33 @@ window.RielCosmetics = (function () {
     ctx.globalAlpha = 1;
   }
 
-  // Keep a number on the page showing the real saved value. Typing
-  // el.textContent = 999... in the console only changed the text (purchases
-  // always check the saved profile), but it looked like it worked, so any edit
-  // snaps straight back.
-  function pinText(el, read) {
+  // Keep a gem/token counter on the page showing the real saved value. Typing
+  // el.textContent = 999... in the console only changes the text (purchases always
+  // check the saved profile), but it is still an attempt to cheat: putting in a
+  // BIGGER number gets the same penalty as editing the save. Anything else just
+  // snaps back. The game itself only ever writes the real value here.
+  const asNumber = t => Number(String(t).replace(/[,\s]/g, ''));
+  function punishCheater() {
+    write(penalize(load()));
+    try { localStorage.setItem(TAMPER_KEY, 'penalty'); } catch {}
+    location.reload();
+  }
+  function pinNumber(el, read) {
     if (!el || el._rielPinned) return;
     el._rielPinned = true;
-    const fix = () => { const real = String(read()); if (el.textContent !== real) el.textContent = real; };
+    const fix = () => {
+      const real = read(), text = real.toLocaleString('en-US'), shown = el.textContent;
+      if (shown === text) return;
+      if (asNumber(shown) > real) { el.textContent = '0'; punishCheater(); return; }
+      el.textContent = text;
+    };
     fix();
     new MutationObserver(fix).observe(el, { childList: true, characterData: true, subtree: true });
   }
-  const pinGems = el => pinText(el, () => gems().toLocaleString('en-US'));
+  const pinGems = el => pinNumber(el, gems);
+  const pinTokens = el => pinNumber(el, () => (window.RielModes ? window.RielModes.tokens() : 0));
 
 
-  return { CURRENCY, CATALOG, CLASSES, CATEGORIES, drawGun, magStep, classStats, GEMS_PER_LEVEL, GEMS_PER_BOSS, load, claim, withKey, takeTamperNotice, pinText, pinGems, legacyOpen: () => Date.now() < LEGACY_UNTIL, item, gems, owns, equipped,
+  return { CURRENCY, CATALOG, CLASSES, CATEGORIES, drawGun, magStep, classStats, GEMS_PER_LEVEL, GEMS_PER_BOSS, load, claim, withKey, takeTamperNotice, pinGems, pinTokens, legacyOpen: () => Date.now() < LEGACY_UNTIL, item, gems, owns, equipped,
            spendGems, buy, equip, levelReward, drawPlayerSprite, spawnTrail, updateTrail, drawTrail };
 })();

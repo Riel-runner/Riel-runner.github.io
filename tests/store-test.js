@@ -130,22 +130,35 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   setProfile({ gems: 40 });
   await go('store.html');
   ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'real saves still load normally');
-  f.contentDocument.getElementById('gem-count').textContent = 99999999999999999999999999999999999999;
+  f.contentDocument.getElementById('gem-count').textContent = 'lol';
   await wait(50);
-  ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'console: typing a huge number into the gem counter snaps back to the real 40');
-  ok(f.contentWindow.RielCosmetics.buy('class', 'sniper').ok === false && f.contentWindow.RielAbilities.roll().ok === false && profile().gems === 40, 'console: after that trick, buying and spinning still use the real 40 gems (refused)');
-  // The console can't give gems, tokens or achievements, or write a save
+  ok(f.contentDocument.getElementById('gem-count').textContent === '40' && profile().gems === 40, 'console: typing junk into the gem counter just snaps back to the real 40 (no penalty)');
+  ok(f.contentWindow.RielCosmetics.buy('class', 'sniper').ok === false && f.contentWindow.RielAbilities.roll().ok === false && profile().gems === 40, 'buying and spinning use the real 40 gems, never the number on screen');
   const Wc = f.contentWindow;
   ok(Wc.RielCosmetics.save === undefined && Wc.RielCosmetics.addGems === undefined, 'console: no save() / addGems() to call');
   ok(Wc.RielCosmetics.claim() === null && Wc.RielCosmetics.withKey({}) === null && Wc.RielCosmetics.withKey(null) === null, 'console: the save key is not handed out after the page has loaded');
   await go('index.html');
   ok(f.contentWindow.RielModes.addToken === undefined && f.contentWindow.RielModes.withKey(null) === null, 'console: cannot give Riel Tokens');
   ok(f.contentWindow.RielAchievements.unlock === undefined && f.contentWindow.RielAchievements.withKey(undefined) === null, 'console: cannot unlock achievements for their gems');
-  f.contentDocument.getElementById('gem-count').textContent = '1e+38';
-  f.contentDocument.getElementById('token-count').textContent = '999';
-  await wait(50);
-  ok(f.contentDocument.getElementById('token-count').textContent === String(f.contentWindow.RielModes.tokens()), 'console: editing the token counter on the title screen snaps back');
   ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'gems unchanged by all of that (40)');
+  const reloaded = async d0 => { for (let i = 0; i < 100 && (f.contentDocument === d0 || f.contentDocument.readyState !== 'complete'); i++) await wait(100); await wait(400); };
+  setProfile({ gems: 40, owned: { class: ['gunner', 'smg'], weapon: ['standard', 'gold'] }, equipped: { class: 'smg', weapon: 'gold' }, abilities: { owned: { shield: { level: 1, copies: 0 } }, equipped: 'shield', slot2: true } });
+  await go('store.html');
+  let d0 = f.contentDocument;
+  d0.getElementById('gem-count').textContent = 99999999999999999999999999999999999999;
+  await reloaded(d0);
+  const Wp = f.contentWindow;
+  ok(f.contentDocument.getElementById('gem-count').textContent === '0' && profile().gems === 0, 'console: typing a BIGGER number into the gem counter counts as cheating: all gems taken');
+  ok(!Wp.RielCosmetics.owns('class', 'smg') && Wp.RielCosmetics.equipped('class').id === 'gunner' && !Object.keys((profile().abilities || {}).owned || {}).length && !Wp.RielAbilities.hasSlot2(), 'console counter cheat: bought classes, abilities and the 2nd slot deleted');
+  ok(Wp.RielCosmetics.owns('weapon', 'gold'), 'console counter cheat: skins kept');
+  await go('index.html');
+  ok(/CHEATING DETECTED/.test((f.contentDocument.querySelector('.tamper-note') || {}).textContent || ''), 'title screen then says cheating was detected');
+  setProfile({ gems: 40, owned: { class: ['gunner', 'smg'] }, equipped: { class: 'smg' } });
+  await go('index.html');
+  d0 = f.contentDocument;
+  d0.getElementById('token-count').textContent = '999';
+  await reloaded(d0);
+  ok(profile().gems === 0 && !(profile().owned.class || []).includes('smg') && /CHEATING DETECTED/.test((f.contentDocument.querySelector('.tamper-note') || {}).textContent || ''), 'console: typing a bigger number into the token counter is cheating too (penalty + notice)');
 
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
@@ -162,6 +175,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=60000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=90000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));

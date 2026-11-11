@@ -256,7 +256,7 @@ if (newAch) {
 // Gems for the cosmetics shop (shared by all campaigns, see js/cosmetics.js)
 window.RielCosmetics.pinGems(document.getElementById('gem-count'));
 // Riel Tokens: earned by finishing campaigns, unlock new campaign types (js/modes.js)
-window.RielCosmetics.pinText(document.getElementById('token-count'), window.RielModes.tokens);
+window.RielCosmetics.pinTokens(document.getElementById('token-count'));
 
 // Intro video: play once per session (when the game is first opened) and remove
 // when finished. No skip. Coming back to the main menu goes straight to the title.
