@@ -79,3 +79,4 @@
   .rs-stats { gap: 10px 12px; }
   .rs-stat-value { font-size: 8px; }
 }
+.rs-type { letter-spacing: 0.12em; }

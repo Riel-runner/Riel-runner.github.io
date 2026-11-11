@@ -12,7 +12,7 @@ function saveCampaigns(arr) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
 }
 
-function getDefaultCampaignState(name) {
+function getDefaultCampaignState(name, mode = 'normal') {
   return {
     id: Date.now(),
     name: name.toUpperCase(),
@@ -27,9 +27,14 @@ function getDefaultCampaignState(name) {
     npcCount: 5,
     bossesBeaten: 0,
     createdAt: Date.now(),
-    lastPlayed: Date.now()
+    lastPlayed: Date.now(),
+    ...window.RielModes.newCampaignFields(mode)   // type, starting level/lives/riels
   };
 }
+
+const M = window.RielModes;
+const progressPct = c => { const p = M.progress(c); return p.total ? Math.round(p.done / p.total * 100) : null; };
+const modeBadge = c => { const m = M.get(c); return m.id === 'normal' ? '' : `<div class="slot-mode" style="color:${m.color};border-color:${m.color}">${m.name}</div>`; };
 
 // ─── RENDER ──────────────────────────────────────────────────────────
 function renderSlots() {
@@ -39,24 +44,25 @@ function renderSlots() {
 
   // Existing campaign slots
   campaigns.forEach((c, i) => {
-    if (c.dead) { grid.appendChild(renderFallenSlot(c, i)); return; }
-    const progress = Math.round((c.level - 1) / 100 * 100);
+    if (c.dead || c.completed) { grid.appendChild(renderFallenSlot(c, i)); return; }
+    const progress = progressPct(c);
     const card = document.createElement('div');
     card.className = 'slot-card';
     card.innerHTML = `
       <div class="slot-number">SLOT ${i+1}</div>
+      ${modeBadge(c)}
       <div>
         <div class="slot-name">${escHtml(c.name)}</div>
         <div class="slot-stats">
-          <div class="slot-stat">LEVEL <span>${c.level} / 100</span></div>
+          <div class="slot-stat">${M.stageLabel(c).replace(/ \d.*$/, '')} <span>${M.stageLabel(c).replace(/^\D+/, '')}</span></div>
           <div class="slot-stat">RIELS <span>${c.riels} KHR</span></div>
           <div class="slot-stat">GUN DMG <span>${c.gunDamage}</span></div>
           <div class="slot-stat">LIVES <span>${'&#9829; '.repeat(c.lives).trim()}</span></div>
         </div>
         <div class="slot-progress-bar">
-          <div class="slot-progress-fill" style="width:${progress}%"></div>
+          <div class="slot-progress-fill" style="width:${progress ?? 100}%"></div>
         </div>
-        <div class="slot-progress-label">${progress}% COMPLETE</div>
+        <div class="slot-progress-label">${progress == null ? 'ENDLESS' : progress + '% COMPLETE'}</div>
       </div>
       <button class="slot-delete" data-idx="${i}">&#10006; DELETE</button>
     `;
@@ -84,26 +90,29 @@ function renderSlots() {
   }
 }
 
-// A campaign that lost all 3 lives: grayed out, can't be played.
-// Only DETAILS (how far it got) and DELETE are available.
+// A campaign that lost all its lives (FALLEN, grayed out) or was finished (COMPLETED,
+// gold). Neither can be played; only DETAILS (how far it got) and DELETE.
 function renderFallenSlot(c, i) {
-  const progress = Math.round((c.level - 1) / 100 * 100);
+  const done = !!c.completed;
+  const progress = progressPct(c);
+  const stage = M.stageLabel(c);
   const card = document.createElement('div');
-  card.className = 'slot-card fallen';
+  card.className = 'slot-card fallen' + (done ? ' completed' : '');
   card.innerHTML = `
     <div class="slot-number">SLOT ${i+1}</div>
-    <div class="slot-fallen-tag">FALLEN</div>
+    <div class="slot-fallen-tag">${done ? 'COMPLETED' : 'FALLEN'}</div>
+    ${modeBadge(c)}
     <div class="slot-fallen-body">
       <div class="slot-name">${escHtml(c.name)}</div>
       <div class="slot-stats">
-        <div class="slot-stat">FELL ON LEVEL <span>${c.level} / 100</span></div>
+        <div class="slot-stat">${done ? 'FINISHED' : 'FELL ON ' + stage.replace(/ \d.*$/, '')} <span>${stage.replace(/^\D+/, '')}</span></div>
         <div class="slot-stat">ENEMIES KILLED <span>${c.enemiesKilled ?? '—'}</span></div>
         <div class="slot-stat">BOSSES BEATEN <span>${c.bossesBeaten || 0} / 10</span></div>
       </div>
       <div class="slot-progress-bar">
-        <div class="slot-progress-fill" style="width:${progress}%"></div>
+        <div class="slot-progress-fill" style="width:${progress ?? 100}%"></div>
       </div>
-      <div class="slot-progress-label">${progress}% COMPLETE</div>
+      <div class="slot-progress-label">${progress == null ? 'ENDLESS' : progress + '% COMPLETE'}</div>
     </div>
     <div class="slot-fallen-actions">
       <button class="slot-action slot-details">DETAILS</button>
@@ -131,7 +140,7 @@ function loadCampaign(idx) {
   const campaigns = getCampaigns();
   const c = campaigns[idx];
   if(!c) return;
-  if(c.dead) { openDetailsModal(idx); return; } // fallen campaigns can't be played
+  if(c.dead || c.completed) { openDetailsModal(idx); return; } // fallen/completed campaigns can't be played
 
   // Update last played
   c.lastPlayed = Date.now();
@@ -150,7 +159,33 @@ const newModal = document.getElementById('new-modal');
 const nameInput = document.getElementById('campaign-name-input');
 const charCount = document.getElementById('char-count');
 
+// Campaign type picker: locked types show how many Riel Tokens they need.
+let selectedMode = 'normal';
+function renderModeList() {
+  const tokens = M.tokens(), rec = M.records();
+  const list = document.getElementById('mode-list');
+  list.innerHTML = '';
+  for (const id of M.ORDER) {
+    const m = M.get(id), open = tokens >= m.tokens;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'mode-btn' + (id === selectedMode ? ' selected' : '') + (open ? '' : ' locked');
+    b.dataset.mode = id;
+    b.disabled = !open;
+    b.style.setProperty('--mode-color', m.color);
+    b.innerHTML = `<span>${m.name}</span><small>${open ? (m.tokens ? 'UNLOCKED' : 'DEFAULT') : '&#128274; ' + m.tokens + ' TOKEN' + (m.tokens > 1 ? 'S' : '')}</small>`;
+    b.addEventListener('click', () => { selectedMode = id; renderModeList(); });
+    list.appendChild(b);
+  }
+  const m = M.get(selectedMode);
+  const record = selectedMode === 'timeattack' && rec.timeattack != null ? ' BEST TIME: ' + M.formatTime(rec.timeattack) + '.'
+               : selectedMode === 'endless' && rec.endless ? ' BEST WAVE: ' + rec.endless + '.' : '';
+  document.getElementById('mode-desc').textContent = m.desc + record;
+}
+
 function openNewModal() {
+  selectedMode = 'normal';
+  renderModeList();
   nameInput.value = '';
   charCount.textContent = '0';
   newModal.classList.add('active');
@@ -189,7 +224,8 @@ function confirmNew() {
     return;
   }
 
-  const newCampaign = getDefaultCampaignState(name);
+  if (!M.unlocked(selectedMode)) { showToast('THAT TYPE IS STILL LOCKED!'); return; }
+  const newCampaign = getDefaultCampaignState(name, selectedMode);
   campaigns.push(newCampaign);
   saveCampaigns(campaigns);
   closeNewModal();
@@ -237,6 +273,9 @@ function openDetailsModal(idx) {
   const c = getCampaigns()[idx];
   if (!c) return;
   detailsIdx = idx;
+  const title = document.querySelector('#details-modal .details-title');
+  title.textContent = c.completed ? 'COMPLETED CAMPAIGN' : 'FALLEN CAMPAIGN';
+  document.querySelector('#details-modal .modal').classList.toggle('completed', !!c.completed);
   document.getElementById('details-name').textContent = c.name;
   document.getElementById('details-summary').innerHTML = window.RielRunSummary.render(c);
   detailsModal.classList.add('active');
@@ -280,4 +319,5 @@ function showToast(msg) {
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────
+document.getElementById('token-count').textContent = M.tokens();
 renderSlots();

@@ -27,50 +27,78 @@ window.RielRunSummary = (function () {
 
   function stats(c) {
     const level = c.level || 1;
+    const M = window.RielModes, mode = M ? M.get(c) : null;
+    const prog = M ? M.progress(c) : { total: TOTAL_LEVELS, done: level - 1 };
+    // Stage label/value depend on the campaign type (levels, bosses or waves).
+    const reached = !mode || mode.id === 'normal' || mode.id === 'nightmare' || mode.id === 'timeattack'
+      ? ['LEVEL REACHED', level + ' / ' + prog.total]
+      : mode.id === 'bossrush' ? ['BOSS REACHED', Math.max(1, Math.floor(level / 10)) + ' / 10']
+      : ['WAVE REACHED', String(level)];
     return [
-      ['LEVEL REACHED',  level + ' / ' + TOTAL_LEVELS],
-      ['LEVELS CLEARED', String(level - 1)],
+      reached,
+      [mode && mode.id === 'bossrush' ? 'BOSSES CLEARED' : mode && mode.id === 'endless' ? 'WAVES CLEARED' : 'LEVELS CLEARED', String(prog.done)],
       ['ENEMIES KILLED', num(c.enemiesKilled)],
-      ['BOSSES BEATEN',  (c.bossesBeaten || 0) + ' / ' + ZONES],
+      ['BOSSES BEATEN',  (c.bossesBeaten || 0) + (mode && mode.id === 'endless' ? '' : ' / ' + ZONES)],
       ['RIELS EARNED',   has(c.rielsEarned) ? num(c.rielsEarned) + ' KHR' : '—'],
       ['UPGRADES',       num(c.upgradeCount || 0)],
       ['GUN DAMAGE',     num(c.gunDamage)],
       ['MAX HP',         num(c.maxHp)],
       ['ACCURACY',       accuracy(c)],
-      ['TIME PLAYED',    formatTime(c.playTimeMs)],
+      [mode && mode.timed ? 'TIME' : 'TIME PLAYED', formatTime(c.playTimeMs)],
     ];
   }
 
   function render(c) {
-    const level   = c.level || 1;
-    const cleared = level - 1;                       // died on `level`, so it wasn't cleared
-    const zone    = Math.min(ZONES, Math.ceil(level / 10));
-    const percent = Math.round(cleared / TOTAL_LEVELS * 100);
-
-    let zonesHtml = '';
-    for (let i = 0; i < ZONES; i++) {
-      const fill = Math.max(0, Math.min(10, cleared - i * 10)) * 10; // % of this zone cleared
-      const isDeathZone = i === zone - 1;
-      zonesHtml +=
-        `<div class="rs-zone${fill === 100 ? ' rs-cleared' : ''}${isDeathZone ? ' rs-death' : ''}" title="ZONE ${i + 1}">` +
-          `<div class="rs-zone-fill" style="width:${fill}%"></div>` +
-          (isDeathZone ? `<div class="rs-marker" style="left:${((level - 1) % 10) * 10 + 5}%"></div>` : '') +
-        `</div>`;
-    }
-
+    const level = c.level || 1;
+    const M = window.RielModes, mode = M ? M.get(c) : null;
+    const prog = M ? M.progress(c) : { total: TOTAL_LEVELS, done: level - 1 };
     const statsHtml = stats(c).map(([label, value]) =>
       `<div class="rs-stat"><div class="rs-stat-label">${label}</div><div class="rs-stat-value">${value}</div></div>`
     ).join('');
+    const typeTag = mode && mode.id !== 'normal'
+      ? `<span class="rs-type" style="color:${mode.color}">${mode.name}</span>` : '';
+
+    // Endless has no finish line: show the wave reached and the best wave.
+    if (prog.total == null) {
+      const best = M.records().endless;
+      return `
+      <div class="rs-progress">
+        <div class="rs-progress-head">
+          <span>${c.dead ? 'FELL ON WAVE' : 'ON WAVE'}</span>
+          <span class="rs-level">${level}</span>
+        </div>
+        <div class="rs-progress-foot">${typeTag || '<span></span>'}<span>BEST WAVE: ${best || level}</span></div>
+      </div>
+      <div class="rs-stats">${statsHtml}</div>`;
+    }
+
+    // 10 segments across the whole run (each = a tenth of it); red tick where it ended.
+    const total = prog.total, done = prog.done, seg = total / ZONES;
+    const percent = Math.round(done / total * 100);
+    const at = Math.min(ZONES - 1, Math.floor(done / seg));        // segment where the run is/ended
+    let zonesHtml = '';
+    for (let i = 0; i < ZONES; i++) {
+      const fill = Math.round(Math.max(0, Math.min(1, (done - i * seg) / seg)) * 100);
+      const isDeathZone = !c.completed && i === at;
+      zonesHtml +=
+        `<div class="rs-zone${fill === 100 ? ' rs-cleared' : ''}${isDeathZone ? ' rs-death' : ''}" title="${i + 1} / ${ZONES}">` +
+          `<div class="rs-zone-fill" style="width:${fill}%"></div>` +
+          (isDeathZone ? `<div class="rs-marker" style="left:${Math.min(95, ((done - at * seg) / seg) * 100 + 5)}%"></div>` : '') +
+        `</div>`;
+    }
+    const bossRush = mode && mode.id === 'bossrush';
+    const shown = bossRush ? Math.max(1, Math.floor(level / 10)) : level;
+    const head = c.completed ? 'COMPLETED' : (c.dead ? 'FELL ON ' : 'NOW ON ') + (bossRush ? 'BOSS' : 'LEVEL');
 
     return `
       <div class="rs-progress">
         <div class="rs-progress-head">
-          <span>FELL ON LEVEL</span>
-          <span class="rs-level">${level}<small> / ${TOTAL_LEVELS}</small></span>
+          <span>${head}</span>
+          <span class="rs-level">${c.completed ? (bossRush ? 10 : total) : shown}<small> / ${bossRush ? 10 : total}</small></span>
         </div>
         <div class="rs-track">${zonesHtml}</div>
         <div class="rs-progress-foot">
-          <span>ZONE ${zone} OF ${ZONES}</span>
+          ${typeTag || `<span>ZONE ${Math.min(ZONES, Math.ceil(level / 10))} OF ${ZONES}</span>`}
           <span>${percent}% COMPLETE</span>
         </div>
       </div>

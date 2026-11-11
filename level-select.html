@@ -20,6 +20,7 @@
 
   <div class="page-title">SELECT CAMPAIGN</div>
   <div class="page-sub">CHOOSE A SAVE SLOT OR START A NEW CAMPAIGN</div>
+  <div class="token-bar" title="Finish a campaign to earn a Riel Token. Tokens unlock new campaign types.">&#9670; RIEL TOKENS: <span id="token-count">0</span></div>
   <div class="divider"></div>
 
   <div class="slots-grid" id="slots-grid">
@@ -43,6 +44,11 @@
         spellcheck="false"
       />
       <div class="modal-char-count"><span id="char-count">0</span> / 16</div>
+    </div>
+    <div>
+      <div class="modal-label">CAMPAIGN TYPE</div>
+      <div class="mode-list" id="mode-list"></div>
+      <div class="mode-desc" id="mode-desc"></div>
     </div>
     <div class="modal-btns">
       <button class="modal-btn modal-btn-cancel" id="new-cancel">CANCEL</button>
@@ -83,6 +89,8 @@
 <div class="toast" id="toast"></div>
 <div class="version">V7 RIEL RUNNER</div>
 
+<script src="js/cosmetics.js"></script>
+<script src="js/modes.js"></script>
 <script src="js/run-summary.js"></script>
 <script src="js/level-select.js"></script>
   <script src="js/music-continue.js"></script>

@@ -453,3 +453,65 @@ body::after {
   flex-direction: column;
   gap: 20px;
 }
+
+/* ═══ CAMPAIGN TYPES & RIEL TOKENS ═══ */
+.token-bar {
+  font-size: 7px;
+  color: #5dade2;
+  letter-spacing: 0.15em;
+  margin: -8px 0 18px;
+  text-align: center;
+}
+.token-bar span { color: #f5c400; }
+
+.mode-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.mode-btn {
+  font-family: 'Public Pixel', monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 6px;
+  background: transparent;
+  border: 2px solid #2a2e44;
+  color: #888870;
+  cursor: pointer;
+  text-align: left;
+}
+.mode-btn span { font-size: 7px; letter-spacing: 0.08em; }
+.mode-btn small { font-size: 5px; letter-spacing: 0.1em; color: #555566; }
+.mode-btn:hover:not(:disabled) { border-color: var(--mode-color); color: #e8e8d0; }
+.mode-btn.selected { border-color: var(--mode-color); color: var(--mode-color); background: rgba(255,255,255,0.03); }
+.mode-btn.locked { opacity: 0.45; cursor: not-allowed; }
+.mode-desc {
+  margin-top: 10px;
+  font-size: 6px;
+  line-height: 1.8;
+  letter-spacing: 0.08em;
+  color: #888870;
+  min-height: 22px;
+}
+
+/* Campaign type badge on a save slot */
+.slot-mode {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 6px;
+  letter-spacing: 0.12em;
+  border: 1px solid;
+  padding: 3px 5px;
+}
+.slot-card.fallen .slot-mode { left: auto; right: 60px; }
+
+/* Completed campaign: gold instead of gray */
+.slot-card.completed { border-color: #3a3010; }
+.slot-card.completed:hover { border-color: #f5c400; }
+.slot-card.completed .slot-fallen-body { filter: none; opacity: 1; }
+.slot-card.completed .slot-name { text-decoration: none; color: #f5c400; }
+.slot-card.completed .slot-fallen-tag { color: #f5c400; border-color: #f5c400; }
+.modal-details.completed { border-color: #f5c400; box-shadow: 6px 6px #b8920a, 10px 10px #3d2b1f; }
+.modal-details.completed .details-title { color: #f5c400; }

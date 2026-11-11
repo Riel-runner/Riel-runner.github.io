@@ -39,7 +39,11 @@ if (!campaign) {
   };
 }
 // A fallen campaign can't be played again (e.g. via the browser Back button).
-if (campaign.dead) window.location.replace('level-select.html');
+// A fallen or completed campaign can't be played again (e.g. via the browser Back button).
+if (campaign.dead || campaign.completed) window.location.replace('level-select.html');
+
+// Campaign type (js/modes.js): Normal, Time Attack, Endless, Boss Rush or Nightmare.
+const MODE = window.RielModes.get(campaign);
 
 // Shop upgrades (definitions in js/upgrades.js). Old saves get migrated here.
 window.RielUpgrades.ensure(campaign);
@@ -834,6 +838,7 @@ const ENEMY_KINDS = {
 
 // Pick a type for a regular enemy slot: specials get more common deeper into the campaign.
 function pickEnemyKind(level) {
+  if (MODE.allEnemies) level = Math.max(level, 95); // Nightmare: every type, at the late-game mix
   const unlocked = Object.keys(ENEMY_KINDS).filter(k => level >= ENEMY_KINDS[k].unlock);
   if (!unlocked.length) return 'normal';
   const chance = Math.min(0.6, 0.15 + (level - 11) * 0.006);
@@ -861,8 +866,8 @@ function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank =
     y: y,
     vy: 0,
     onGround: true,
-    hp: hpBase,
-    maxHp: hpBase,
+    hp: Math.round(hpBase * MODE.enemyMult),    // Nightmare: 1.5x tougher
+    maxHp: Math.round(hpBase * MODE.enemyMult),
     dead: false,
     deadTimer: 0,
     animTick: 0,
@@ -873,8 +878,9 @@ function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank =
     attackCooldownFrames: isBoss ? BOSS_ATTACK_COOLDOWN_FRAMES : NPC_ATTACK_COOLDOWN_FRAMES,
     isBoss: !!isBoss,
     isTank: !!isTank,
-    contactDamage: dmgBase,
-    rielReward: isTank ? 5 : k ? k.reward : 2,  // tanks worth 5 Riels, specials 3-6
+    contactDamage: dmgBase * MODE.enemyMult,
+    rielReward: isBoss && MODE.bossRiels ? MODE.bossRiels * Math.max(1, Math.floor(lvlNow / 10)) // Boss Rush: big payouts
+              : isTank ? 5 : k ? k.reward : 2,  // tanks worth 5 Riels, specials 3-6
     w: w,
     h: h,
     // Enemy type + ability state (see ENEMY TYPES section)
@@ -1573,7 +1579,8 @@ function checkLevelClear() {
   if (!allDead) return;
   if (gameState !== 'playing') return;
 
-  if (campaign.level >= 100) {
+  if (window.RielModes.isFinal(campaign)) {
+    completeCampaign();          // last level of this campaign type: it's finished
     gameState  = 'you_win';
     stateTimer = 0;
   } else if (campaign.level % 10 === 0) {
@@ -1614,20 +1621,23 @@ function updatePowerups() {
 
 // After clearing a level: HP is fully healed, and beating a boss level
 // (every 10th) also restores lives to the max of 3. Otherwise lost lives stay lost.
-const MAX_LIVES = 3;
+const MAX_LIVES = MODE.lives; // 3 (Nightmare: 1)
 function isBossLevel() { return campaign.level % 10 === 0; }
 // Gems for clearing this level, added to the profile shared by every campaign.
 // Recorded on the campaign so a level can never pay out twice (e.g. after a resume).
+function gemsForThisLevel() { return window.RielCosmetics.levelReward(campaign.level) * MODE.gemMult; } // Nightmare: x2
+
 function awardLevelGems() {
   if (campaign.gemsForLevel === campaign.level) return 0;
   campaign.gemsForLevel = campaign.level;
-  const n = window.RielCosmetics.levelReward(campaign.level);
+  const n = gemsForThisLevel();
   window.RielCosmetics.addGems(n);
   return n;
 }
 
 function applyLevelClearRewards() {
   awardLevelGems();
+  if (MODE.id === 'endless') window.RielModes.saveRecord('endless', campaign.level, false); // best wave
   campaign.levelState = null; // level finished: nothing to resume (null, not delete, so saves overwrite it)
   campaign.maxHp = player.maxHp;
   campaign.hp    = player.maxHp;
@@ -1888,6 +1898,7 @@ function handleCampaignOver() {
   // Mark the campaign as fallen (permanent) and record where it ended.
   campaign.dead      = true;
   campaign.diedAt    = Date.now();
+  if (MODE.id === 'endless') window.RielModes.saveRecord('endless', campaign.level, false); // best wave
   campaign.levelState = null;
   campaign.lives     = 0;
   campaign.hp        = 0;
@@ -1913,12 +1924,56 @@ function handleCampaignOver() {
   stateTimer = 0;
 }
 
+// The final level of this campaign type was cleared: mark it complete (it can't be
+// replayed), award gems, a Riel Token (once) and records, then save everywhere.
+let completionResult = null;
+function completeCampaign() {
+  if (completionResult) return completionResult;
+  awardLevelGems();
+  campaign.completed   = true;
+  campaign.completedAt = Date.now();
+  campaign.levelState  = null;
+  campaign.hp          = Math.ceil(player.hp);
+  campaign.lives       = player.lives;
+  campaign.maxHp       = player.maxHp;
+  campaign.gunDamage   = player.gunDamage;
+  const result = { token: false, unlocked: null, newBest: false };
+  if (MODE.givesToken && !campaign.tokenAwarded) {
+    campaign.tokenAwarded = true;
+    const total = window.RielModes.addToken();
+    result.token = true;
+    result.tokens = total;
+    const m = window.RielModes.ORDER.map(window.RielModes.get).find(x => x.tokens === total);
+    if (m) result.unlocked = m.name;
+  }
+  if (MODE.timed) result.newBest = window.RielModes.saveRecord('timeattack', campaign.playTimeMs || 0, true);
+  const best = parseInt(localStorage.getItem('bestRiels') || '0');
+  if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
+  persistCampaign();
+  return (completionResult = result);
+}
+
 // Fill in and reveal the death screen (HTML panel in game.html).
 let deathScreenShown = false;
-function showDeathScreen() {
+function showDeathScreen() { showEndScreen(false); }
+// Death screen, or (victory) the campaign-complete screen with its rewards.
+function showEndScreen(victory) {
   if (deathScreenShown) return;
   deathScreenShown = true;
   document.getElementById('death-campaign').textContent = campaign.name || 'UNKNOWN';
+  if (victory) {
+    const r = completeCampaign();
+    document.getElementById('death-screen').classList.add('victory');
+    document.getElementById('death-title').textContent = 'CAMPAIGN COMPLETE';
+    document.getElementById('death-sub-end').textContent = 'IS COMPLETE';
+    const reward = document.getElementById('death-reward');
+    const lines = [];
+    if (r.token) lines.push('+1 RIEL TOKEN &middot; ' + r.tokens + ' TOTAL');
+    if (r.unlocked) lines.push('NEW CAMPAIGN TYPE UNLOCKED: ' + r.unlocked);
+    if (MODE.timed) lines.push((r.newBest ? 'NEW BEST TIME: ' : 'TIME: ') + window.RielModes.formatTime(campaign.playTimeMs));
+    reward.innerHTML = lines.map(l => '<div>' + l + '</div>').join('');
+    reward.hidden = lines.length === 0;
+  }
   document.getElementById('death-summary').innerHTML = window.RielRunSummary.render(campaign);
   const touch = document.getElementById('touch-overlay');
   if (touch) touch.style.display = 'none';
@@ -2314,7 +2369,7 @@ function drawPauseMenu() {
   ctx.font = '6px "Public Pixel", monospace';
   const stats = [
     ['CAMPAIGN',  campaign.name || 'UNKNOWN'],
-    ['LEVEL',     campaign.level + ' / 100'],
+    ['LEVEL',     window.RielModes.stageLabel(campaign).replace(/^LEVEL /, '')],
     ['HP',        Math.ceil(player.hp) + ' / ' + player.maxHp],
     ['LIVES',     '♥'.repeat(player.lives) + '♡'.repeat(Math.max(0, 3 - player.lives))],
     ['RIELS',     campaign.riels + ' KHR'],
@@ -2460,7 +2515,11 @@ function drawHUD() {
   ctx.font = '7px "Public Pixel", monospace';
   ctx.textAlign = 'right';
   ctx.fillStyle = '#f5c400';
-  ctx.fillText('LVL ' + campaign.level, BASE_W - 10, rightY);
+  ctx.fillText(window.RielModes.stageLabel(campaign, true), BASE_W - 10, rightY);
+  if (MODE.id !== 'normal') {                         // campaign type badge (and Time Attack clock)
+    ctx.fillStyle = MODE.color;
+    ctx.fillText(MODE.timed ? MODE.name + ' ' + window.RielModes.formatTime(campaign.playTimeMs) : MODE.name, BASE_W - 10, rightY + 48);
+  }
   ctx.fillStyle = '#e8e8d0';
   ctx.fillText(campaign.riels + ' KHR', BASE_W - 10, rightY + 12);
   ctx.fillStyle = '#888870';
@@ -2527,7 +2586,7 @@ function drawOverlay() {
       ctx.fillStyle = '#2ecc71';
       ctx.fillText('HP RESTORED', cx, cy + 50);
       ctx.fillStyle = '#5dade2';
-      ctx.fillText('+' + window.RielCosmetics.levelReward(campaign.level) + ' ' + window.RielCosmetics.CURRENCY, cx, cy + 66);
+      ctx.fillText('+' + gemsForThisLevel() + ' ' + window.RielCosmetics.CURRENCY, cx, cy + 66);
     }
     if (stateTimer > 90) proceedToShop();
 
@@ -2542,7 +2601,7 @@ function drawOverlay() {
       ctx.fillStyle = '#e74c3c';
       ctx.fillText('LIVES RESTORED  ' + '♥'.repeat(MAX_LIVES) + '  HP RESTORED', cx, cy + 66);
       ctx.fillStyle = '#5dade2';
-      ctx.fillText('+' + window.RielCosmetics.levelReward(campaign.level) + ' ' + window.RielCosmetics.CURRENCY, cx, cy + 82);
+      ctx.fillText('+' + gemsForThisLevel() + ' ' + window.RielCosmetics.CURRENCY, cx, cy + 82);
     }
     if (stateTimer > 120) proceedToShop();
 
@@ -2551,20 +2610,8 @@ function drawOverlay() {
     if (stateTimer > 60) showDeathScreen();
 
   } else if (gameState === 'you_win') {
-    drawBanner('YOU BEAT THE GAME!', '#f5c400', cx, cy - 20);
-    if (stateTimer > 35) {
-      ctx.font = '7px "Public Pixel", monospace';
-      ctx.fillStyle = '#e8e8d0';
-      ctx.fillText('CONGRATULATIONS!', cx, cy + 24);
-      ctx.fillStyle = '#888870';
-      ctx.fillText('TOTAL RIELS: ' + campaign.riels + ' KHR', cx, cy + 44);
-    }
-    if (stateTimer === 21) awardLevelGems();
-    if (stateTimer > 220) {
-      campaign.levelState = null;
-      persistCampaign();
-      window.location.href = 'index.html';
-    }
+    drawBanner('CAMPAIGN COMPLETE!', '#f5c400', cx, cy - 20);
+    if (stateTimer > 70) showEndScreen(true);
   }
 
   ctx.textAlign = 'left';

@@ -179,3 +179,21 @@ body {
 .death-btn:hover,
 .death-btn:focus-visible { background: #ffe033; outline: none; }
 .death-btn:active { transform: translateY(3px); box-shadow: 0 2px #b8920a; }
+
+/* Campaign complete: the same end screen in gold, with the rewards */
+#death-screen.victory .death-panel { border-color: #f5c400; box-shadow: 6px 6px #b8920a, 10px 10px #3d2b1f; }
+#death-screen.victory .death-title { color: #f5c400; text-shadow: 3px 3px #3d2b1f; }
+#death-screen.victory .death-divider { background: rgba(245, 196, 0, 0.3); }
+.death-reward {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 2px dashed #5dade2;
+  font-size: 8px;
+  line-height: 1.6;
+  letter-spacing: 0.08em;
+  color: #5dade2;
+  text-align: center;
+}
+.death-reward[hidden] { display: none; }

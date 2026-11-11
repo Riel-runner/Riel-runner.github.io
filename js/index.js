@@ -231,6 +231,8 @@ if(bestRiels) document.getElementById('best-riels').textContent = bestRiels + ' 
 
 // Gems for the cosmetics shop (shared by all campaigns, see js/cosmetics.js)
 document.getElementById('gem-count').textContent = window.RielCosmetics.gems().toLocaleString('en-US');
+// Riel Tokens: earned by finishing campaigns, unlock new campaign types (js/modes.js)
+document.getElementById('token-count').textContent = window.RielModes.tokens();
 
 // Intro video: play once per session (when the game is first opened) and remove
 // when finished. No skip. Coming back to the main menu goes straight to the title.

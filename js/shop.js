@@ -172,7 +172,7 @@ function saveCampaign() {
 
 function continueToGame() {
   // Advance to next level
-  campaign.level++;
+  campaign.level = window.RielModes.nextLevel(campaign); // +1 (Boss Rush: next boss, +10)
   // Start every level at full HP. Lives are NOT reset here: they only refill
   // to 3 after beating a boss level (handled in game.js when the level is cleared).
   campaign.hp = campaign.maxHp;
