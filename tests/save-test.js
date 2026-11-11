@@ -20,19 +20,19 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   put({ ...base, level: 6, lives: 3, hp: 170 });
   await go('game.html');
   let w = f.contentWindow, E = js => w.eval(js);
-  const before = JSON.parse(E("(() => { player.x = 1234; player.y = GROUND_Y - PLAYER_H; player.hp = 77; player.lives = 2; player.bullets = 7; player.dashCooldown = 200; player.speedMult = 2; player.speedPowerTimer = 400; npcs[0].hp = 0; npcs[0].dead = true; npcs[1].x = 2222; npcs[1].hp = 3; npcs[1].aware = true; npcs[1].state = 'retreat'; powerups.forEach(p => p.collected = true); return JSON.stringify({ plats: platforms.map(p => Math.round(p.x) + ':' + Math.round(p.y)).join(','), lasers: lasers.length, n: npcs.length }); })()"));
+  const before = JSON.parse(E("(() => { player.x = 300; player.y = GROUND_Y - PLAYER_H; player.hp = 77; player.lives = 2; player.bullets = 7; player.dashCooldown = 200; player.speedMult = 2; player.speedPowerTimer = 400; npcs[0].hp = 0; npcs[0].dead = true; npcs[1].x = 2222; npcs[1].hp = 3; npcs[1].aware = true; npcs[1].state = 'retreat'; powerups.forEach(p => p.collected = true); return JSON.stringify({ plats: platforms.map(p => Math.round(p.x) + ':' + Math.round(p.y)).join(','), lasers: lasers.length, n: npcs.length }); })()"));
   E('PAUSE_ITEMS[2].action()'); // QUIT TO MENU
   await until(() => /index\.html/.test(f.contentWindow.location.href));
   const active = JSON.parse(localStorage.getItem('activeCampaign'));
   const slot = JSON.parse(localStorage.getItem('rielrunner_campaigns'))[0];
-  ok(active.levelState && slot.levelState && slot.levelState.player.x === 1234, 'quitting saves the level to the active save and the campaign slot');
+  ok(active.levelState && slot.levelState && slot.levelState.player.x === 300, 'quitting saves the level to the active save and the campaign slot');
 
   // Load it again like level select does
   localStorage.setItem('activeCampaign', JSON.stringify(slot));
   await go('game.html');
   w = f.contentWindow;
   const after = JSON.parse(w.eval("JSON.stringify({ x: player.x, hp: player.hp, lives: player.lives, bullets: player.bullets, dash: player.dashCooldown, spd: player.speedMult + '/' + player.speedPowerTimer, n0dead: npcs[0].dead, n1: Math.round(npcs[1].x) + '/' + npcs[1].hp + '/' + npcs[1].state, plats: platforms.map(p => Math.round(p.x) + ':' + Math.round(p.y)).join(','), lasers: lasers.length, n: npcs.length, pw: powerups.every(p => p.collected), gs: gameState, toast: toastMsg })"));
-  ok(after.x === 1234 && after.hp === 77 && after.lives === 2 && after.bullets === 7 && after.dash === slot.levelState.player.dashCooldown && after.spd === '2/' + slot.levelState.player.speedPowerTimer, 'player restored: position, HP, lives, ammo, dash cooldown, speed boost');
+  ok(after.x === 300 && after.hp === 77 && after.lives === 2 && after.bullets === 7 && after.dash === slot.levelState.player.dashCooldown && after.spd === '2/' + slot.levelState.player.speedPowerTimer, 'player restored: position, HP, lives, ammo, dash cooldown, speed boost');
   ok(after.n0dead && after.n1 === Math.round(slot.levelState.npcs[1].x) + '/3/' + slot.levelState.npcs[1].state && after.n === before.n, 'enemies restored: killed stay dead, others keep position, HP and AI state');
   ok(after.plats === before.plats && after.lasers === before.lasers && after.pw, 'same platforms, lasers and collected power-ups');
   ok(after.gs === 'paused' && after.toast === 'PROGRESS RESTORED', 'resumes paused with a PROGRESS RESTORED message');
@@ -56,7 +56,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   // A saved level from a different level number is ignored (fresh level)
   put({ ...base, level: 8, lives: 3, hp: 170, levelState: { ...slot.levelState, level: 7 } });
   await go('game.html');
-  ok(f.contentWindow.eval('player.x') !== 1234 && f.contentWindow.eval('gameState') === 'playing', 'stale save from another level is ignored');
+  ok(f.contentWindow.eval('player.x') !== 300 && f.contentWindow.eval('gameState') === 'playing', 'stale save from another level is ignored');
 
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });

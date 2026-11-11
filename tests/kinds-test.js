@@ -40,7 +40,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   // Intro message the first time a type appears
   let found = false;
   for (let tries = 0; tries < 8 && !found; tries++) {
-    put({ ...base, level: 21, lives: 3, hp: 170, seenKinds: ['runner'] });
+    put({ ...base, level: 21, lives: 3, hp: 170, npcCount: 15, seenKinds: ['runner'] }); // more enemies = a spitter almost surely spawns
     await go('game.html');
     if (f.contentWindow.eval('npcs.some(n => n.kind === "spitter")')) found = true;
   }
