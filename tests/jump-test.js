@@ -38,10 +38,9 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   const worst = E("(() => { let worst = 0; for (let k = 0; k < 50; k++) for (const p of generatePlatforms()) worst = Math.max(worst, GROUND_Y - p.y); return worst; })()");
   ok(worst <= E('PLATFORM_MAX_RISE') && worst < h1 - 8, '50 random levels: highest platform ' + worst.toFixed(1) + 'px < jump ' + h1.toFixed(1) + 'px');
 
-  // Ground lasers are narrow enough to jump over
-  const lw = E("(() => { let widest = 0; for (let k = 0; k < 50; k++) { generateLasers(); for (const l of lasers) if (l.y === GROUND_Y - 20) widest = Math.max(widest, l.w); } return widest; })()");
-  const airDist = E('(2 * -JUMP_FORCE / GRAVITY) * MOVE_SPEED');
-  ok(lw < airDist, 'widest ground laser ' + lw.toFixed(0) + 'px < jump distance ' + airDist.toFixed(0) + 'px');
+  // Vertical laser beams (platform edge to floor) are low enough to jump over
+  const lh = E("(() => { let tallest = 0; for (let k = 0; k < 50; k++) { platforms.length = 0; platforms.push(...generatePlatforms()); generateLasers(); for (const l of lasers) tallest = Math.max(tallest, l.h); } return tallest; })()");
+  ok(lh > 0 && lh < h1 - 8, 'tallest laser beam ' + lh.toFixed(0) + 'px < jump height ' + h1.toFixed(1) + 'px (can jump over)');
 
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
