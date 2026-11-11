@@ -9,7 +9,7 @@ C="${CHROME:-C:/Program Files/Google/Chrome/Application/chrome.exe}"
 cd "$REPO" || exit 1
 
 status=0
-for t in intro death touch lives shop store classes modes revive ai soak jump save laser kinds; do
+for t in intro death touch lives shop store classes modes revive ai soak jump save laser kinds achievements; do
   out="$(node "$T/$t-test.js" . "$C")"
   pass=$(grep -c '^PASS' <<<"$out"); fail=$(grep -c -E '^FAIL|ERROR|no result' <<<"$out")
   printf '%-6s %3d pass %3d fail\n' "$t" "$pass" "$fail"
@@ -21,8 +21,8 @@ done
 
 pages="$(node "$T/check.js" . "$C")"
 okp=$(grep -c '^OK' <<<"$pages")
-printf '%-6s %3d / 7 pages load cleanly\n' pages "$okp"
-[ "$okp" -eq 7 ] || { grep -v '^OK' <<<"$pages" | sed 's/^/       /'; status=1; }
+printf '%-6s %3d / 8 pages load cleanly\n' pages "$okp"
+[ "$okp" -eq 8 ] || { grep -v '^OK' <<<"$pages" | sed 's/^/       /'; status=1; }
 
 [ $status -eq 0 ] && echo "ALL PASSED" || echo "SOME CHECKS FAILED"
 exit $status

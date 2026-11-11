@@ -32,6 +32,7 @@ To run one suite: `node tests/<name>-test.js . "<path to chrome.exe>"` from the 
 | `save` | Mid-level save and resume |
 | `laser` | Laser placement rules and the 5s on / 3s off cycle |
 | `kinds` | Runner, spitter, bomber, shielder and medic abilities |
+| `achievements` | Menu button and NEW badge, achievements page, gems paid once, credit for old saves, in-game unlocks (levels, speed, no damage, accuracy, kills, bosses, campaign types, Endless) |
 
 `tools/shot.js` and `tools/enemy-shot.js` take screenshots and don't run any checks.
 

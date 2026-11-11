@@ -68,6 +68,32 @@ function addStat(name, amount = 1) {
   campaign[name] = (campaign[name] || 0) + amount;
 }
 
+// ── Achievements (js/achievements.js) ──
+// This level's numbers for the speed / no-damage / accuracy achievements. Saved with
+// the level so a resumed level keeps its clock.
+const levelStats = { timeMs: 0, damage: 0, shots0: campaign.shotsFired || 0, hits0: campaign.shotsHit || 0 };
+const ACH = window.RielAchievements;
+const achToasts = [];        // unlocked mid-level, shown one at a time (see drawToast)
+let clearAchievements = [];  // unlocked by clearing this level, listed on the banner
+const achText = a => 'ACHIEVEMENT: ' + a.name + '  +' + a.gems + ' GEMS';
+function announceAchievements(list) {
+  for (const a of list) achToasts.push(achText(a));
+}
+
+// Report the clear once per level (a restored "level complete" save clears again).
+function reportLevelClear() {
+  if (campaign.achLevel === campaign.level) return;
+  campaign.achLevel = campaign.level;
+  const shots = (campaign.shotsFired || 0) - levelStats.shots0;
+  const hits  = (campaign.shotsHit || 0) - levelStats.hits0;
+  clearAchievements = achToasts.splice(0).concat(ACH.levelCleared({
+    level: campaign.level, boss: isBossLevel(), timeMs: levelStats.timeMs,
+    damage: levelStats.damage, shots, hits,
+  }).map(achText));
+  if (MODE.id === 'endless') clearAchievements.push(...ACH.max('bestWave', campaign.level).map(achText));
+  persistCampaign();
+}
+
 let settings;
 try { settings = JSON.parse(localStorage.getItem('rielrunner_settings')); } catch {}
 if (!settings) settings = { autoAim: true, hpBars: true, damageNumbers: true };
@@ -1571,6 +1597,8 @@ function killNPC(n) {
   campaign.riels += reward;
   addStat('enemiesKilled');
   addStat('rielsEarned', reward);
+  announceAchievements(ACH.add('kills'));
+  if (n.isBoss) announceAchievements(ACH.add('bossesBeaten'));
   spawnRielParticles(n.x, n.y);
   if (settings.damageNumbers) {
     dmgNumbers.push({ x: n.x, y: n.y - 14, amount: reward + ' KHR', color: '#2ecc71', life: 55, vy: -1.0, isText: true });
@@ -1596,6 +1624,7 @@ function checkLevelClear() {
   const allDead = npcs.every(n => n.dead);
   if (!allDead) return;
   if (gameState !== 'playing') return;
+  reportLevelClear();
 
   if (window.RielModes.isFinal(campaign)) {
     completeCampaign();          // last level of this campaign type: it's finished
@@ -1688,6 +1717,7 @@ function damagePlayer(amount, isTick) {
   if (player.invuln > 0) return 0;  // just revived: a moment of safety
   amount *= (1 - ARMOR_BLOCK) * (levelEvent.playerDamageTakenMult || 1);
   player.hp -= amount;
+  levelStats.damage += amount;
   player.hitFlash = 20;
   if (player.hp <= 0) {
     player.hp = 0;
@@ -1917,7 +1947,10 @@ function handleCampaignOver() {
   // Mark the campaign as fallen (permanent) and record where it ended.
   campaign.dead      = true;
   campaign.diedAt    = Date.now();
-  if (MODE.id === 'endless') window.RielModes.saveRecord('endless', campaign.level, false); // best wave
+  if (MODE.id === 'endless') {
+    window.RielModes.saveRecord('endless', campaign.level, false); // best wave
+    ACH.max('bestWave', campaign.level);                           // shown on the achievements page
+  }
   campaign.levelState = null;
   campaign.lives     = 0;
   campaign.hp        = 0;
@@ -1966,6 +1999,7 @@ function completeCampaign() {
     if (m) result.unlocked = m.name;
   }
   if (MODE.timed) result.newBest = window.RielModes.saveRecord('timeattack', campaign.playTimeMs || 0, true);
+  result.achievements = clearAchievements.concat(ACH.campaignFinished(MODE.id, campaign.revives).map(achText));
   const best = parseInt(localStorage.getItem('bestRiels') || '0');
   if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);
   persistCampaign();
@@ -2031,6 +2065,7 @@ function showEndScreen(victory) {
     if (r.token) lines.push('+1 RIEL TOKEN &middot; ' + r.tokens + ' TOTAL');
     if (r.unlocked) lines.push('NEW CAMPAIGN TYPE UNLOCKED: ' + r.unlocked);
     if (MODE.timed) lines.push((r.newBest ? 'NEW BEST TIME: ' : 'TIME: ') + window.RielModes.formatTime(campaign.playTimeMs));
+    lines.push(...r.achievements);
     reward.innerHTML = lines.map(l => '<div>' + l + '</div>').join('');
     reward.hidden = lines.length === 0;
   }
@@ -2493,6 +2528,7 @@ function showToast(msg, frames = 120) {
 }
 
 function drawToast() {
+  if (toastTimer2 <= 0 && achToasts.length && gameState === 'playing') showToast(achToasts.shift(), 180);
   if (toastTimer2 <= 0) return;
   toastTimer2--;
   const alpha = Math.min(1, toastTimer2 / 20);
@@ -2649,7 +2685,8 @@ function drawOverlay() {
       ctx.fillStyle = '#5dade2';
       ctx.fillText('+' + gemsForThisLevel() + ' ' + window.RielCosmetics.CURRENCY, cx, cy + 66);
     }
-    if (stateTimer > 90) proceedToShop();
+    drawClearAchievements(cx, cy + 88);
+    if (stateTimer > 90 + achBannerExtra()) proceedToShop();
 
   } else if (gameState === 'boss_slayed') {
     drawBanner('BOSS SLAYED!', '#f5c400', cx, cy);
@@ -2664,7 +2701,8 @@ function drawOverlay() {
       ctx.fillStyle = '#5dade2';
       ctx.fillText('+' + gemsForThisLevel() + ' ' + window.RielCosmetics.CURRENCY, cx, cy + 82);
     }
-    if (stateTimer > 120) proceedToShop();
+    drawClearAchievements(cx, cy + 104);
+    if (stateTimer > 120 + achBannerExtra()) proceedToShop();
 
   } else if (gameState === 'game_over') {
     // Brief pause on the dimmed game (skull visible), then the death screen.
@@ -2676,6 +2714,17 @@ function drawOverlay() {
   }
 
   ctx.textAlign = 'left';
+}
+
+// Achievements earned by this clear, under the banner text (with extra time to read them).
+const achBannerExtra = () => (clearAchievements.length ? 60 + 30 * Math.min(3, clearAchievements.length) : 0);
+function drawClearAchievements(cx, y) {
+  if (stateTimer <= 45 || !clearAchievements.length) return;
+  ctx.font = '7px "Public Pixel", monospace';
+  ctx.fillStyle = '#f5c400';
+  const shown = clearAchievements.slice(0, 3);
+  if (clearAchievements.length > 3) shown.push('+' + (clearAchievements.length - 3) + ' MORE ACHIEVEMENTS');
+  shown.forEach((t, i) => ctx.fillText(t, cx, y + i * 14));
 }
 
 function drawBanner(text, color, cx, cy) {
@@ -2852,7 +2901,7 @@ function saveLevelProgress() {
   for (const k of PLAYER_SAVE_KEYS) p[k] = player[k];
   campaign.levelState = {
     level: campaign.level, savedAt: Date.now(), camX, player: p,
-    npcs: npcs.map(n => ({ ...n })), platforms, lasers, powerups,
+    npcs: npcs.map(n => ({ ...n })), platforms, lasers, powerups, stats: levelStats,
   };
   campaign.hp = Math.ceil(player.hp);
   campaign.maxHp = player.maxHp;
@@ -2878,6 +2927,9 @@ function restoreLevelState() {
   npcs.length = 0;      npcs.push(...s.npcs.map(n => ({ ...n, nextDodgeRoll: 0 })));
   Object.assign(player, s.player);
   player.vx = 0;
+  // Older saves have no level clock: that level can't earn speed/no-damage achievements.
+  // (Big finite numbers, not Infinity, which JSON would save as null.)
+  Object.assign(levelStats, s.stats || { timeMs: 1e12, damage: 1e12 });
   // Upgrades bought in the shop (from the title screen) since this save win over
   // the saved values; a Max HP upgrade also adds that HP now.
   const hpGain = (campaign.maxHp || 0) - (s.player.maxHp || 0);
@@ -2909,7 +2961,11 @@ function loop() {
   // Real time played (not frames, so high-refresh screens don't inflate it).
   // Capped per frame so time in a background tab doesn't count.
   const now = performance.now();
-  if (gameState === 'playing') addStat('playTimeMs', Math.min(now - lastLoopTime, 100));
+  if (gameState === 'playing') {
+    const dt = Math.min(now - lastLoopTime, 100);
+    addStat('playTimeMs', dt);
+    levelStats.timeMs += dt;
+  }
   lastLoopTime = now;
   if (gameState === 'playing' && frameCount % AUTOSAVE_FRAMES === 0) saveLevelProgress(); // backup autosave
 

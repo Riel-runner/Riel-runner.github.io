@@ -230,6 +230,16 @@ loop();
 const bestRiels = localStorage.getItem('bestRiels');
 if(bestRiels) document.getElementById('best-riels').textContent = bestRiels + ' KHR';
 
+// Achievements: credit anything earned outside the game (e.g. buying a class), then
+// show how many are new since the achievements page was last opened.
+window.RielAchievements.sync();
+const newAch = window.RielAchievements.unseen();
+if (newAch) {
+  const badge = document.getElementById('ach-badge');
+  badge.textContent = newAch + ' NEW';
+  badge.hidden = false;
+}
+
 // Gems for the cosmetics shop (shared by all campaigns, see js/cosmetics.js)
 document.getElementById('gem-count').textContent = window.RielCosmetics.gems().toLocaleString('en-US');
 // Riel Tokens: earned by finishing campaigns, unlock new campaign types (js/modes.js)

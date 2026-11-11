@@ -223,3 +223,15 @@ body {
 
 .stat-row .gem-count { color: #5dade2; }
 .stat-row .token-count { color: #f5c400; }
+
+/* "3 NEW" next to ACHIEVEMENTS when some were unlocked since the page was last opened. */
+.ach-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 5px;
+  background: #f5c400;
+  color: #0a0e1a;
+  font-size: 0.6em;
+  vertical-align: 0.2em;
+}
+.ach-badge[hidden] { display: none; }

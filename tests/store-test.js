@@ -26,7 +26,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   await go('index.html');
   let d = f.contentDocument;
   const btns = [...d.querySelectorAll('.btn-group .btn')];
-  ok(btns.map(b => b.textContent.trim()).join('|') === 'PLAY|SHOP|SETTINGS|CREDITS' && btns[1].getAttribute('href') === 'store.html', 'title SHOP button opens the cosmetics shop (store.html)');
+  ok(btns.map(b => b.textContent.trim()).join('|') === 'PLAY|SHOP|ACHIEVEMENTS|SETTINGS|CREDITS' && btns[1].getAttribute('href') === 'store.html', 'title SHOP button opens the cosmetics shop (store.html)');
   ok(d.getElementById('gem-count').textContent === '123', 'title screen shows the gem total');
 
   // Shop page: tabs, items, defaults
