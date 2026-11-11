@@ -6,10 +6,16 @@ const [repo, chrome] = process.argv.slice(2);
 
 const testScript = String.raw`
 const f = document.getElementById('f'), log = [];
+// Profiles written by hand here get signed with this test page's own save key, so the save
+// protection (js/cosmetics.js) accepts them.
+const _rawSet = Storage.prototype.setItem;
+const _seal = window.RielCosmetics.withKey(window.RielCosmetics.claim());   // claimed while this test page loads
+let _sealing = false;
+Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(o); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
 const ok = (c, m) => log.push((c ? 'PASS ' : 'FAIL ') + m);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 6000) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch {} await wait(50); } return false; }
-async function go(url) { const tag = url + (url.includes('?') ? '&' : '?') + 't=' + Math.random(); const snap = Object.assign({}, localStorage); f.src = 'about:blank'; await wait(150); localStorage.clear(); for (const k in snap) localStorage.setItem(k, snap[k]); f.src = tag;
+async function go(url) { const tag = url + (url.includes('?') ? '&' : '?') + 't=' + Math.random(); const snap = Object.assign({}, localStorage); f.src = 'about:blank'; await wait(150); localStorage.clear(); for (const k in snap) _rawSet.call(localStorage, k, snap[k]); f.src = tag;
   await until(() => f.contentDocument.URL.endsWith(tag) && f.contentDocument.readyState !== 'loading'); await wait(300); }
 const base = { riels: 0, hp: 30, maxHp: 170, gunDamage: 2, upgradeCount: 0, upgradeCost: 4, npcCount: 5, bossesBeaten: 0, name: 'T' };
 const put = c => { localStorage.setItem('rielrunner_campaigns', JSON.stringify([c])); localStorage.setItem('activeCampaignIdx', '0'); localStorage.setItem('activeCampaign', JSON.stringify(c)); };
@@ -84,10 +90,56 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   await go('shop.html?from=menu');
   ok(/COMPLETE/.test(f.contentDocument.querySelector('.level-badge').textContent) && /CONTINUE/.test(f.contentDocument.querySelector('.btn-continue').textContent), 'upgrade shop is back to the normal between-levels shop');
 
+  // ── Save protection: editing the profile by hand (Application tab) doesn't stick ──
+  const raw = () => JSON.parse(localStorage.getItem('rielrunner_profile'));
+  const edit = (key, change) => { const p = JSON.parse(localStorage.getItem(key)); change(p); _rawSet.call(localStorage, key, JSON.stringify(p)); };
+  // Old save from before the protection (no signature, nothing else stored): accepted only
+  // until the cut-off date, so nobody can delete the signature to get in that way later.
+  localStorage.clear();
+  _rawSet.call(localStorage, 'rielrunner_profile', JSON.stringify({ gems: 100 }));
+  await go('store.html');
+  const legacyOpen = f.contentWindow.RielCosmetics.legacyOpen();
+  ok(f.contentDocument.getElementById('gem-count').textContent === (legacyOpen ? '100' : '0'),
+    legacyOpen ? 'old unsigned save is accepted until the cut-off (100 gems)' : 'after the cut-off, an unsigned save is not accepted');
+  localStorage.clear();
+  setProfile({ gems: 100 });                                   // a real (signed) save
+  await go('store.html');
+  ok(typeof raw()._s === 'string' && localStorage.getItem('rielrunner_profile_b') && localStorage.getItem('rielrunner_pg') && f.contentDocument.getElementById('gem-count').textContent === '100', 'saves are signed, with a signed backup');
+  edit('rielrunner_profile', p => { p.gems = 999999; });      // edit the number, keep the signature
+  await go('store.html');
+  ok(f.contentDocument.getElementById('gem-count').textContent === '0' && raw().gems === 0, 'gems edited in storage: caught, and as a penalty ALL gems are taken away (0)');
+  await go('index.html');
+  ok(/CHEATING DETECTED.*ALL YOUR GEMS WERE TAKEN AWAY/.test((f.contentDocument.querySelector('.tamper-note') || {}).textContent || ''), 'title screen says cheating was detected and the gems were taken');
+  await go('index.html');
+  ok(!f.contentDocument.querySelector('.tamper-note'), 'that notice only shows once');
+  setProfile({ gems: 100, owned: { class: ['gunner', 'smg'] }, equipped: { class: 'smg' } });   // a real save with a bought class
+  await go('store.html');
+  edit('rielrunner_profile', p => { delete p._s; p.gems = 50000; });   // remove the signature too
+  await go('store.html');
+  ok(raw().gems === 0 && f.contentWindow.RielCosmetics.owns('class', 'smg'), 'removing the signature does not work either: gems gone, the bought class kept');
+  edit('rielrunner_profile', p => { p.gems = 77777; });
+  edit('rielrunner_profile_b', p => { p.gems = 77777; });      // edit the backup as well
+  await go('store.html');
+  ok(!raw().gems && f.contentDocument.getElementById('gem-count').textContent === '0', 'both copies edited: the profile resets (0 gems)');
+  edit('rielrunner_profile', p => { p.owned = { class: ['gunner', 'sniper'] }; p.equipped = { class: 'sniper' }; });
+  await go('store.html');
+  ok(!f.contentWindow.RielCosmetics.owns('class', 'sniper'), 'unlocking a class by editing storage does not work');
+  setProfile({ gems: 40 });
+  await go('store.html');
+  ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'real saves still load normally');
+  // The console can't give gems, tokens or achievements, or write a save
+  const Wc = f.contentWindow;
+  ok(Wc.RielCosmetics.save === undefined && Wc.RielCosmetics.addGems === undefined, 'console: no save() / addGems() to call');
+  ok(Wc.RielCosmetics.claim() === null && Wc.RielCosmetics.withKey({}) === null && Wc.RielCosmetics.withKey(null) === null, 'console: the save key is not handed out after the page has loaded');
+  await go('index.html');
+  ok(f.contentWindow.RielModes.addToken === undefined && f.contentWindow.RielModes.withKey(null) === null, 'console: cannot give Riel Tokens');
+  ok(f.contentWindow.RielAchievements.unlock === undefined && f.contentWindow.RielAchievements.withKey(undefined) === null, 'console: cannot unlock achievements for their gems');
+  ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'gems unchanged by all of that (40)');
+
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
 `;
-const harness = `<!doctype html><html><body><pre id="out">running</pre><iframe id="f" width="960" height="600"></iframe><script>${testScript}</script></body></html>`;
+const harness = `<!doctype html><html><body><pre id="out">running</pre><iframe id="f" width="960" height="600"></iframe><script src="js/cosmetics.js"></script><script>${testScript}</script></body></html>`;
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
@@ -99,6 +151,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=20000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=60000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));

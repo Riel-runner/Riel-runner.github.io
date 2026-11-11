@@ -101,7 +101,11 @@ function addStat(name, amount = 1) {
 // abilityDmg / plainDmg: damage dealt by an ability or while one is active, vs every other hit
 // (ABILITY MASTER achievement: clear a level with only the first kind).
 const levelStats = { timeMs: 0, damage: 0, shots0: campaign.shotsFired || 0, hits0: campaign.shotsHit || 0, abilityDmg: 0, plainDmg: 0 };
-const ACH = window.RielAchievements;
+// Save key (js/cosmetics.js): only scripts holding it can give gems, tokens and achievements.
+const SAVE_KEY = window.RielCosmetics.claim();
+const GEMS_W   = window.RielCosmetics.withKey(SAVE_KEY);
+const MODES_W  = window.RielModes.withKey(SAVE_KEY);
+const ACH = window.RielAchievements.withKey(SAVE_KEY);
 const achToasts = [];        // unlocked mid-level, shown one at a time (see drawToast)
 let clearAchievements = [];  // unlocked by clearing this level, listed on the banner
 const achText = a => 'ACHIEVEMENT: ' + a.name + '  +' + a.gems + ' GEMS';
@@ -1778,13 +1782,13 @@ function awardLevelGems() {
   if (campaign.gemsForLevel === campaign.level) return 0;
   campaign.gemsForLevel = campaign.level;
   const n = gemsForThisLevel();
-  window.RielCosmetics.addGems(n);
+  GEMS_W.addGems(n);
   return n;
 }
 
 function applyLevelClearRewards() {
   awardLevelGems();
-  if (MODE.id === 'endless') window.RielModes.saveRecord('endless', campaign.level, false); // best wave
+  if (MODE.id === 'endless') MODES_W.saveRecord('endless', campaign.level, false); // best wave
   campaign.levelState = null; // level finished: nothing to resume (null, not delete, so saves overwrite it)
   campaign.maxHp = player.maxHp;
   campaign.hp    = player.maxHp;
@@ -2208,7 +2212,7 @@ function handleCampaignOver() {
   campaign.dead      = true;
   campaign.diedAt    = Date.now();
   if (MODE.id === 'endless') {
-    window.RielModes.saveRecord('endless', campaign.level, false); // best wave
+    MODES_W.saveRecord('endless', campaign.level, false); // best wave
     ACH.max('bestWave', campaign.level);                           // shown on the achievements page
   }
   campaign.levelState = null;
@@ -2252,13 +2256,13 @@ function completeCampaign() {
   const result = { token: false, unlocked: null, newBest: false };
   if (MODE.givesToken && !campaign.tokenAwarded) {
     campaign.tokenAwarded = true;
-    const total = window.RielModes.addToken();
+    const total = MODES_W.addToken();
     result.token = true;
     result.tokens = total;
     const m = window.RielModes.ORDER.map(window.RielModes.get).find(x => x.tokens === total);
     if (m) result.unlocked = m.name;
   }
-  if (MODE.timed) result.newBest = window.RielModes.saveRecord('timeattack', campaign.playTimeMs || 0, true);
+  if (MODE.timed) result.newBest = MODES_W.saveRecord('timeattack', campaign.playTimeMs || 0, true);
   result.achievements = clearAchievements.concat(ACH.campaignFinished(MODE.id, campaign.revives).map(achText));
   const best = parseInt(localStorage.getItem('bestRiels') || '0');
   if (campaign.riels > best) localStorage.setItem('bestRiels', campaign.riels);

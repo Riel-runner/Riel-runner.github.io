@@ -235,3 +235,17 @@ body {
   vertical-align: 0.2em;
 }
 .ach-badge[hidden] { display: none; }
+
+/* Shown once if hand-edited save data was caught (js/cosmetics.js save protection). */
+.tamper-note {
+  margin: -6px 0 16px;
+  max-width: 520px;
+  padding: 8px 12px;
+  border: 2px solid #c0392b;
+  background: rgba(192, 57, 43, 0.15);
+  color: #ff7a7a;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  line-height: 1.8;
+  text-align: center;
+}

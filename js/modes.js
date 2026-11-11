@@ -5,6 +5,7 @@
 // Used by the game, level select, the between-level shop and the title screen.
 window.RielModes = (function () {
   const C = window.RielCosmetics;
+  const W = C.withKey(C.claim());   // saving tokens / records (claimed while the page loads)
 
   // finalLevel: the level that completes the campaign (null = never ends).
   // levelStep: how far "continue" in the shop moves (Boss Rush jumps boss to boss).
@@ -61,7 +62,7 @@ window.RielModes = (function () {
   function addToken() {
     const p = profile();
     p.tokens += 1;
-    C.save(p);
+    W.save(p);
     return p.tokens;
   }
 
@@ -70,7 +71,7 @@ window.RielModes = (function () {
     const p = profile();
     const old = p.records[key];
     const better = old == null || (lowerIsBetter ? value < old : value > old);
-    if (better) { p.records[key] = value; C.save(p); }
+    if (better) { p.records[key] = value; W.save(p); }
     return better;
   }
 
@@ -109,6 +110,8 @@ window.RielModes = (function () {
     return { mode: m.id, level: m.startLevel, lives: m.lives, riels: m.startRiels };
   }
 
-  return { MODES, ORDER, get, tokens, unlocked, records, addToken, saveRecord,
+  // Giving tokens / saving records only for game scripts holding the save key.
+  const withKey = key => (C.withKey(key) ? { addToken, saveRecord } : null);
+  return { MODES, ORDER, get, tokens, unlocked, records, withKey,
            isFinal, nextLevel, progress, stageLabel, formatTime, newCampaignFields };
 })();

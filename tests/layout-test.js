@@ -9,6 +9,10 @@ const [repo, chrome] = process.argv.slice(2);
 
 const testScript = String.raw`
 const out = [];
+const _rawSet = Storage.prototype.setItem;   // hand-written profiles get signed (this page claims the save key)
+const _seal = window.RielCosmetics.withKey(window.RielCosmetics.claim());   // claimed while this test page loads
+let _sealing = false;
+Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(o); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
 const say = s => out.push(s);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 6000) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch {} await wait(50); } return false; }
@@ -151,7 +155,7 @@ function domReport(label, W, root) {
   document.getElementById('out').textContent = out.join('\n');
 })().catch(e => { document.getElementById('out').textContent = out.join('\n') + '\nERROR ' + e.stack; });
 `;
-const harness = `<!doctype html><html><body><pre id="out">running</pre><script>${testScript}</script></body></html>`;
+const harness = `<!doctype html><html><body><pre id="out">running</pre><script src="js/cosmetics.js"></script><script>${testScript}</script></body></html>`;
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
   if (url === '/h.html') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(harness); }

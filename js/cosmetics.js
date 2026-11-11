@@ -71,10 +71,73 @@ window.RielCosmetics = (function () {
   const CATEGORIES = ['class', 'weapon', 'player', 'trail'];
   const DEFAULTS = { class: 'gunner', weapon: 'standard', player: 'runner', trail: 'none' };
 
+  // ── Save protection ──
+  // The profile (gems, tokens, items, abilities, achievements) is saved with a signature
+  // made from its contents and a secret, plus a signed backup copy. Editing the saved
+  // data by hand (e.g. in the browser's Application tab) breaks the signature: the game
+  // then goes back to the backup, or resets the profile if both were edited.
+  // Saves from before this existed (no signature) are accepted once and signed.
+  const BACKUP_KEY = 'rielrunner_profile_b';
+  const GUARD_KEY  = 'rielrunner_pg';           // set once a signed save exists
+  const TAMPER_KEY = 'rielrunner_tampered';     // shown once on the title screen
+  const LEGACY_UNTIL = Date.UTC(2026, 10, 18);    // unsigned (pre-protection) saves accepted until Nov 18, 2026
+  // Writing saves and giving gems only works with KEY. Each game script claims it while
+  // the page is still loading (claim() returns null afterwards), so the same calls typed
+  // into the browser console do nothing.
+  const KEY = Object.freeze({});
+  const claim = () => (document.readyState === 'loading' ? KEY : null);
+  // Save / add gems for scripts holding the key (null for anyone else).
+  function withKey(key) {
+    if (key !== KEY) return null;
+    return { save: p => write(p), addGems: n => addGems(n) };
+  }
+  const PEPPER = [82, 105, 101, 108, 45, 55, 33, 107, 104, 114, 35, 103, 101, 109].map(c => String.fromCharCode(c)).join('');
+  function sign(text) {                         // 53-bit string hash (cyrb53), seeded
+    let h1 = 0xdeadbeef ^ 7, h2 = 0x41c6ce57 ^ 7;
+    const s = PEPPER + text + PEPPER.length;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  // Parse a stored profile; returns { p, state: 'ok' | 'unsigned' | 'bad' | 'none' }.
+  function readSigned(key) {
+    let raw = null, p = null;
+    try { raw = localStorage.getItem(key); p = JSON.parse(raw); } catch {}
+    if (!raw || !p || typeof p !== 'object') return { p: null, state: 'none' };
+    if (!('_s' in p)) return { p, state: 'unsigned' };
+    const { _s, ...rest } = p;
+    return { p: rest, state: _s === sign(JSON.stringify(rest)) ? 'ok' : 'bad' };
+  }
+  function readProfile() {
+    const main = readSigned(PROFILE_KEY);
+    if (main.state === 'ok' || main.state === 'none') return main.p;
+    let guarded = false;
+    try { guarded = !!localStorage.getItem(GUARD_KEY); } catch {}
+    // Old save from before the protection (no signature): accepted until LEGACY_UNTIL, then signed.
+    if (main.state === 'unsigned' && !guarded && Date.now() < LEGACY_UNTIL) { write(main.p); return main.p; }
+    // Edited outside the game (cheating): go back to the last real save from the signed
+    // backup but take away ALL gems as a penalty; if the backup was edited too, start over.
+    const backup = readSigned(BACKUP_KEY);
+    try { localStorage.setItem(TAMPER_KEY, backup.state === 'ok' ? 'penalty' : 'reset'); } catch {}
+    const p = backup.state === 'ok' ? { ...backup.p, gems: 0 } : {};
+    write(p);
+    return p;
+  }
+  // 'restored' / 'reset' if edited save data was caught (once), else null.
+  function takeTamperNotice() {
+    let v = null;
+    try { v = localStorage.getItem(TAMPER_KEY); localStorage.removeItem(TAMPER_KEY); } catch {}
+    return v;
+  }
+
   // ── Profile (gems, owned, equipped) ──
   function load() {
-    let p = null;
-    try { p = JSON.parse(localStorage.getItem(PROFILE_KEY)); } catch {}
+    let p = readProfile();
     if (!p || typeof p !== 'object') p = {};
     p.gems = Math.max(0, Math.floor(Number(p.gems) || 0));
     p.owned = p.owned || {};
@@ -87,8 +150,15 @@ window.RielCosmetics = (function () {
     }
     return p;
   }
-  function save(p) {
-    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch {}
+  function write(p) {
+    const { _s, ...rest } = p || {};
+    const text = JSON.stringify(rest);
+    const signed = JSON.stringify({ ...rest, _s: sign(text) });
+    try {
+      localStorage.setItem(PROFILE_KEY, signed);
+      localStorage.setItem(BACKUP_KEY, signed);
+      localStorage.setItem(GUARD_KEY, '1');
+    } catch {}
   }
 
   const item     = (cat, id) => (CATALOG[cat] || []).find(i => i.id === id) || null;
@@ -101,14 +171,14 @@ window.RielCosmetics = (function () {
     const p = load();
     if (p.gems < n) return false;
     p.gems -= n;
-    save(p);
+    write(p);
     return true;
   }
 
   function addGems(n) {
     const p = load();
     p.gems += Math.max(0, Math.floor(n));
-    save(p);
+    write(p);
     return p.gems;
   }
 
@@ -120,7 +190,7 @@ window.RielCosmetics = (function () {
     p.gems -= it.price;
     p.owned[cat].push(id);
     p.equipped[cat] = id;                                          // equip right away
-    save(p);
+    write(p);
     return { ok: true };
   }
 
@@ -128,7 +198,7 @@ window.RielCosmetics = (function () {
     const p = load();
     if (!p.owned[cat].includes(id)) return false;
     p.equipped[cat] = id;
-    save(p);
+    write(p);
     return true;
   }
 
@@ -213,6 +283,6 @@ window.RielCosmetics = (function () {
     ctx.globalAlpha = 1;
   }
 
-  return { CURRENCY, CATALOG, CLASSES, CATEGORIES, drawGun, magStep, classStats, GEMS_PER_LEVEL, GEMS_PER_BOSS, load, save, item, gems, owns, equipped,
-           addGems, spendGems, buy, equip, levelReward, drawPlayerSprite, spawnTrail, updateTrail, drawTrail };
+  return { CURRENCY, CATALOG, CLASSES, CATEGORIES, drawGun, magStep, classStats, GEMS_PER_LEVEL, GEMS_PER_BOSS, load, claim, withKey, takeTamperNotice, legacyOpen: () => Date.now() < LEGACY_UNTIL, item, gems, owns, equipped,
+           spendGems, buy, equip, levelReward, drawPlayerSprite, spawnTrail, updateTrail, drawTrail };
 })();

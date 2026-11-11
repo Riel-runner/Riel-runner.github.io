@@ -6,6 +6,7 @@
 // new ones) and achievements.html.
 window.RielAchievements = (function () {
   const C = window.RielCosmetics, M = window.RielModes;
+  const W = C.withKey(C.claim());   // saving (claimed while the page loads)
 
   // stat + goal: counts toward a lifetime number (shows a progress bar).
   // No stat: unlocked by something happening in the game (see the hooks below).
@@ -73,6 +74,7 @@ window.RielAchievements = (function () {
   function seed(p) {
     if (p.life.seeded) return;
     p.life.seeded = true;
+    if (!C.legacyOpen()) return;   // only saves from before the save protection get this credit
     let all = [];
     try { all = JSON.parse(localStorage.getItem('rielrunner_campaigns')) || []; } catch {}
     const ids = [];
@@ -101,7 +103,7 @@ window.RielAchievements = (function () {
     ids.push(...counterIds(p));
     if ((p.owned.class || []).length > 1) ids.push('new_class');
     const got = grant(p, ids);
-    C.save(p);
+    W.save(p);
     return got;
   }
 
@@ -147,9 +149,10 @@ window.RielAchievements = (function () {
   function markSeen() {
     const p = profile();
     for (const id in p.achievements) p.achievements[id].seen = true;
-    C.save(p);
+    W.save(p);
   }
 
-  return { LIST, CATEGORIES, sync, add, max, unlock, levelCleared, campaignFinished,
-           status, unseen, markSeen };
+  // Progress / unlocking only for game scripts holding the save key (not the console).
+  const withKey = key => (C.withKey(key) ? { add, max, unlock, levelCleared, campaignFinished } : null);
+  return { LIST, CATEGORIES, sync, withKey, status, unseen, markSeen };
 })();

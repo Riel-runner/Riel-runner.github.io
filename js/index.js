@@ -231,6 +231,18 @@ loop();
 const bestRiels = localStorage.getItem('bestRiels');
 if(bestRiels) document.getElementById('best-riels').textContent = bestRiels + ' KHR';
 
+// Save data edited by hand (e.g. in the browser's Application tab) is caught by the save
+// protection in js/cosmetics.js: say what happened, once.
+(function () {
+  const t = window.RielCosmetics.takeTamperNotice();
+  if (!t) return;
+  const note = document.createElement('div');
+  note.className = 'tamper-note';
+  note.textContent = t === 'penalty' ? 'CHEATING DETECTED: SAVE DATA WAS EDITED OUTSIDE THE GAME. ALL YOUR GEMS WERE TAKEN AWAY.'
+                                     : 'CHEATING DETECTED: SAVE DATA WAS EDITED OUTSIDE THE GAME, SO IT WAS RESET.';
+  document.querySelector('.stat-row').after(note);
+})();
+
 // Achievements: credit anything earned outside the game (e.g. buying a class), then
 // show how many are new since the achievements page was last opened.
 window.RielAchievements.sync();

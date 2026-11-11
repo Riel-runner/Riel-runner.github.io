@@ -20,7 +20,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   put({ ...base, level: 5, lives: 3, hp: 170 });
   await go('game.html');
   const w = f.contentWindow, E = js => w.eval(js);
-  E("window.measureJump = function (mult) { platforms.length = 0; lasers.length = 0; npcs.length = 0; player.x = 500; player.y = GROUND_Y - PLAYER_H; player.vy = 0; player.onGround = true; player.dead = false; player.jumpMult = mult; player.jumpPowerTimer = mult > 1 ? 999 : 0; keys.ArrowUp = true; let top = player.y; for (let i = 0; i < 120; i++) { updatePlayer(); keys.ArrowUp = false; top = Math.min(top, player.y); } return (GROUND_Y - PLAYER_H) - top; };");
+  E("window.measureJump = function (mult) { applyLevelEvent(null); platforms.length = 0; lasers.length = 0; npcs.length = 0; player.x = 500; player.y = GROUND_Y - PLAYER_H; player.vy = 0; player.onGround = true; player.dead = false; player.jumpMult = mult; player.jumpPowerTimer = mult > 1 ? 999 : 0; keys.ArrowUp = true; let top = player.y; for (let i = 0; i < 120; i++) { updatePlayer(); keys.ArrowUp = false; top = Math.min(top, player.y); } return (GROUND_Y - PLAYER_H) - top; };");
   const h1 = E('measureJump(1)'), h15 = E('measureJump(JUMP_POWER_MULT)');
   ok(h1 > 75 && h1 < 90, 'normal jump is lower: ' + h1.toFixed(1) + 'px (was ~131px)');
   ok(Math.abs(h15 / h1 - 1.5) < 0.08, 'jump boost = 1.5x height: ' + h15.toFixed(1) + 'px (' + (h15 / h1).toFixed(2) + 'x)');

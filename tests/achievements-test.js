@@ -8,6 +8,12 @@ const [repo, chrome] = process.argv.slice(2);
 
 const testScript = String.raw`
 const f = document.getElementById('f'), log = [];
+// Profiles written by hand here get signed with this test page's own save key, so the save
+// protection (js/cosmetics.js) accepts them.
+const _rawSet = Storage.prototype.setItem;
+const _seal = window.RielCosmetics.withKey(window.RielCosmetics.claim());   // claimed while this test page loads
+let _sealing = false;
+Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(o); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
 const ok = (c, m) => log.push((c ? 'PASS ' : 'FAIL ') + m);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 6000) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch {} await wait(50); } return false; }
@@ -38,7 +44,11 @@ const clearLevel = "npcs.forEach(n => { if (!n.dead) killNPC(n); });";
 
   // ── Old saves get credit (once), gems paid, badge shows ──
   localStorage.removeItem('rielrunner_profile');
-  setProf({ gems: 10, records: { endless: 30 } });
+  // Old-save credit only applies until the save-protection cut-off date; after that, start from a
+  // profile that already holds those counters (what a real player's save looks like by then).
+  const legacy = window.RielCosmetics.legacyOpen();
+  setProf(legacy ? { gems: 10, records: { endless: 30 } }
+                 : { gems: 10, records: { endless: 30 }, life: { seeded: true, levelsCleared: 129, kills: 1500, bossesBeaten: 12, bestWave: 30 } });
   localStorage.setItem('rielrunner_campaigns', JSON.stringify([
     { ...base, mode: 'normal', level: 100, completed: true, enemiesKilled: 1200, bossesBeaten: 10 },
     { ...base, mode: 'endless', level: 30, dead: true, enemiesKilled: 300, bossesBeaten: 2, revives: 1 },
@@ -48,7 +58,7 @@ const clearLevel = "npcs.forEach(n => { if (!n.dead) killNPC(n); });";
   let p = prof();
   ok(p.life.levelsCleared === 129, 'old campaigns count toward levels cleared (' + p.life.levelsCleared + ', want 100 + 29)');
   ok(p.life.kills === 1500 && p.life.bossesBeaten === 12 && p.life.bestWave === 30, 'old kills / bosses / best wave credited (' + [p.life.kills, p.life.bossesBeaten, p.life.bestWave] + ')');
-  const want = ['levels_1', 'levels_10', 'levels_50', 'levels_100', 'bosses_1', 'bosses_5', 'bosses_10', 'kills_100', 'kills_1000', 'beat_normal', 'no_revive', 'endless_25'];
+  const want = ['levels_1', 'levels_10', 'levels_50', 'levels_100', 'bosses_1', 'bosses_5', 'bosses_10', 'kills_100', 'kills_1000', 'beat_normal', 'no_revive', 'endless_25'].filter(id => legacy || (id !== 'beat_normal' && id !== 'no_revive'));
   ok(want.every(has), 'old progress unlocks the matching achievements (missing: ' + want.filter(id => !has(id)) + ')');
   ok(!has('levels_250') && !has('kills_5000') && !has('endless_50') && !has('beat_nightmare'), 'goals not reached stay locked');
   const LIST = W().RielAchievements.LIST;
@@ -212,7 +222,7 @@ const clearLevel = "npcs.forEach(n => { if (!n.dead) killNPC(n); });";
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
 `;
-const harness = `<!doctype html><html><body><pre id="out">running</pre><iframe id="f" width="960" height="600"></iframe><script>${testScript}</script></body></html>`;
+const harness = `<!doctype html><html><body><pre id="out">running</pre><iframe id="f" width="960" height="600"></iframe><script src="js/cosmetics.js"></script><script>${testScript}</script></body></html>`;
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];

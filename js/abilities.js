@@ -6,6 +6,7 @@
 // A second slot (used with Q) can be bought for SLOT2_COST gems.
 window.RielAbilities = (function () {
   const C = window.RielCosmetics;
+  const W = C.withKey(C.claim());   // saving (claimed while the page loads)
 
   const ROLL_COST = 100;                   // gems per spin
   const SLOT2_COST = 250;                  // gems for the second ability slot (Q)
@@ -121,7 +122,7 @@ window.RielAbilities = (function () {
     else own[def.id].copies++;
     if (!p.abilities.equipped) p.abilities.equipped = def.id;
     p.abilities.rolls = (p.abilities.rolls || 0) + 1;
-    C.save(p);
+    W.save(p);
     return { ok: true, def, isNew, ...own[def.id] };
   }
 
@@ -136,7 +137,7 @@ window.RielAbilities = (function () {
     if (o.copies < need) return { ok: false, reason: 'NEED ' + need + ' COPIES' };
     o.copies -= need;
     o.level++;
-    C.save(p);
+    W.save(p);
     return { ok: true, level: o.level, awakened: o.level >= MAX_LEVEL };
   }
   // Put an ability in slot 1 or 2. If it's already in the other slot, the two swap.
@@ -147,7 +148,7 @@ window.RielAbilities = (function () {
     if (a[other] === id) a[other] = a[key] || null;
     if (other === 'equipped2' && !a.slot2) a.equipped2 = null;
     a[key] = id;
-    C.save(p);
+    W.save(p);
     return true;
   }
 
@@ -157,7 +158,7 @@ window.RielAbilities = (function () {
     if (p.gems < SLOT2_COST) return { ok: false, reason: 'NOT ENOUGH GEMS' };
     p.gems -= SLOT2_COST;
     p.abilities.slot2 = true;
-    C.save(p);
+    W.save(p);
     return { ok: true };
   }
 

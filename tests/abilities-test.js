@@ -7,6 +7,12 @@ const [repo, chrome] = process.argv.slice(2);
 
 const testScript = String.raw`
 const f = document.getElementById('f'), log = [];
+// Profiles written by hand here get signed with this test page's own save key, so the save
+// protection (js/cosmetics.js) accepts them.
+const _rawSet = Storage.prototype.setItem;
+const _seal = window.RielCosmetics.withKey(window.RielCosmetics.claim());   // claimed while this test page loads
+let _sealing = false;
+Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(o); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
 const ok = (c, m) => log.push((c ? 'PASS ' : 'FAIL ') + m);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 6000) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch {} await wait(50); } return false; }
@@ -282,7 +288,7 @@ const addNPC = (x, extra = '') => E("(() => { const n = makeNPC(" + x + "); n.aw
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
 `;
-const harness = `<!doctype html><html><body><pre id="out">running</pre><iframe id="f" width="960" height="600"></iframe><script>${testScript}</script></body></html>`;
+const harness = `<!doctype html><html><body><pre id="out">running</pre><iframe id="f" width="960" height="600"></iframe><script src="js/cosmetics.js"></script><script>${testScript}</script></body></html>`;
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
