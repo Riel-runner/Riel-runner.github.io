@@ -83,16 +83,21 @@ function shadow(cx, w) {
   ctx.fillRect(Math.round(cx - w / 2), FLOOR_Y - Math.round(S / 2), Math.round(w), Math.round(S / 2) + 1);
 }
 
+const SKULL_FRAMES = 120;       // same as the game: the skull rises and fades over 2 seconds
+const SKULL_RISE_CELLS = 13;    // how far it rises, in skull pixels (the game's 40px at its pixel size)
 const SKULL = [[1,0],[2,0],[3,0],[0,1],[2,1],[4,1],[0,2],[1,2],[2,2],[3,2],[4,2],[1,3],[3,3],[1,4],[2,4],[3,4]];
 
 function drawEnemy(e) {
   const c = e.cell;
-  if (e.dead) {                       // skull where it fell
-    const sy = FLOOR_Y - 5 * c;
+  if (e.dead) {                       // skull floats up and fades away, like in the game
+    const t = Math.min(1, e.deadTimer / SKULL_FRAMES);
+    const sy = Math.round(FLOOR_Y - 5 * c - t * SKULL_RISE_CELLS * c);
+    ctx.globalAlpha = 1 - t * t * (3 - 2 * t);
     ctx.fillStyle = '#e8e8d0';
     for (const [x, y] of SKULL) ctx.fillRect(e.x + x * c, sy + y * c, c, c);
     ctx.fillStyle = '#0a0e1a';
     for (const [x, y] of [[1,1],[3,1],[2,3]]) ctx.fillRect(e.x + x * c, sy + y * c, c, c);
+    ctx.globalAlpha = 1;
     return;
   }
   const lift = e.hop > 0 ? Math.round(Math.sin(e.hop / 10 * Math.PI) * 3 * S) : 0;
@@ -161,7 +166,7 @@ function update(tick) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     if (e.dead) {
-      if (++e.deadTimer > 60) { enemies.splice(i, 1); spawnEnemy(W + 20 + Math.random() * W * 0.25); }
+      if (++e.deadTimer > SKULL_FRAMES) { enemies.splice(i, 1); spawnEnemy(W + 20 + Math.random() * W * 0.25); }
       continue;
     }
     e.frame++;

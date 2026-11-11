@@ -33,6 +33,9 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   let d = f.contentDocument;
   const btns = [...d.querySelectorAll('.btn-group .btn')];
   ok(btns.map(b => b.textContent.trim()).join('|') === 'PLAY|SHOP|ACHIEVEMENTS|SETTINGS|CREDITS' && btns[1].getAttribute('href') === 'store.html', 'title SHOP button opens the cosmetics shop (store.html)');
+  const skullAt = t => f.contentWindow.eval('(function () { const e = Object.assign({}, enemies[0], { dead: true, deadTimer: ' + t + ' }); const r = []; const fr = ctx.fillRect; ctx.fillRect = function (x, y) { r.push({ y: y, a: ctx.globalAlpha }); }; try { drawEnemy(e); } finally { ctx.fillRect = fr; } return r.length ? { y: Math.min.apply(null, r.map(q => q.y)), a: r[0].a, after: ctx.globalAlpha } : null; })()');
+  const sk0 = skullAt(0), sk60 = skullAt(60), sk118 = skullAt(118);
+  ok(sk0 && sk60 && sk118 && sk60.y < sk0.y && sk118.y < sk60.y && sk0.a === 1 && sk60.a < 1 && sk118.a < 0.05 && sk118.after === 1, 'main menu background: a dead enemy\'s skull floats up and fades away like in the game');
   ok(d.getElementById('gem-count').textContent === '123', 'title screen shows the gem total');
 
   // Shop page: tabs, items, defaults
