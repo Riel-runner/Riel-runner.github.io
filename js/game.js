@@ -2542,15 +2542,19 @@ function drawWorld() {
 // ═══════════════════════════════════════════════════════════════
 //  DRAW BULLETS
 // ═══════════════════════════════════════════════════════════════
+// Each bullet is drawn turned to the way it's flying (aiming up or down tilts it),
+// with its glow trail streaming out behind.
+const bulletAngle = b => Math.atan2(b.dy, b.dx);
 function drawBullets() {
   for (const b of bullets) {
-    const sx = wp(b.x);
-    // Trail
-    ctx.fillStyle = WEAPON_SKIN.glow;
-    ctx.fillRect(sx - b.dx * 8, b.y - b.dy * 8, 8, 3);
-    // Bullet
-    ctx.fillStyle = WEAPON_SKIN.bullet;
-    ctx.fillRect(sx, b.y, 10, 3);
+    ctx.save();
+    ctx.translate(wp(b.x), b.y + 1.5);
+    ctx.rotate(bulletAngle(b));
+    ctx.fillStyle = WEAPON_SKIN.glow;      // trail (behind)
+    ctx.fillRect(-12, -1.5, 8, 3);
+    ctx.fillStyle = WEAPON_SKIN.bullet;    // bullet (pointing forward)
+    ctx.fillRect(-4, -1.5, 10, 3);
+    ctx.restore();
   }
 }
 

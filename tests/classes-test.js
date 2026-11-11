@@ -76,6 +76,21 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   // Each class has its own gun sprite
   ok(E("new Set(window.RielCosmetics.CLASSES.map(c => c.gun.length + ':' + c.muzzle)).size") === 6, 'every class has a different gun sprite');
 
+  // Bullets point the way they fly (aiming up tilts them), not always forward
+  setProf({ gems: 0 });
+  put({ ...base, name: 'BD', level: 3, lives: 3, hp: 170, gunDamage: 2 });
+  await go('game.html');
+  E("applyLevelEvent(null); npcs.length = 0; bullets.length = 0; levelEvent.forceManualAim = true; player.reloadTimer = 0; player.bullets = 5; mouseX = wp(player.x) + 10; mouseY = player.y - 300; firePlayerBullet();");
+  ok(E('bullets[0].dy') < -0.9 && Math.abs(E('bulletAngle(bullets[0]) + Math.PI / 2')) < 0.2, 'aiming straight up: the bullet flies up and is turned to point up');
+  // Draw one bullet flying straight up and look at the pixels
+  const px = js => E("(() => { const d = ctx.getImageData(" + js + ", 1, 1).data; return d[0] + ',' + d[1] + ',' + d[2]; })()");
+  E("bullets.length = 0; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, BASE_W, BASE_H); bullets.push({ x: camX + 400, y: 200, dx: 0, dy: -1 }); drawBullets();");
+  const col = E("(() => { const c = document.createElement('canvas').getContext('2d'); c.fillStyle = WEAPON_SKIN.bullet; c.fillRect(0, 0, 1, 1); const d = c.getImageData(0, 0, 1, 1).data; return d[0] + ',' + d[1] + ',' + d[2]; })()");
+  ok(px('400, 197') === col && px('406, 201') === '0,0,0', 'an upward bullet is drawn vertically (bullet colour above it, nothing to its side)');
+  ok(E("(() => { const t = ctx.getTransform(); return t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1 && t.e === 0 && t.f === 0; })()"), 'drawing rotated bullets leaves the canvas un-rotated');
+  E("bullets.length = 0; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, BASE_W, BASE_H); bullets.push({ x: camX + 400, y: 200, dx: 1, dy: 0 }); drawBullets();");
+  ok(px('404, 201') === col && px('400, 196') === '0,0,0', 'a bullet flying right is still drawn flat');
+
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
 `;
