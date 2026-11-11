@@ -57,14 +57,19 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   const x0 = E(w, 'npcs[0].x'); step(w, 18); const x1 = E(w, 'npcs[0].x'); step(w, 12); const x2 = E(w, 'npcs[0].x');
   ok(wound && Math.abs(x1 - x0) < 1 && x0 - x2 > 70, 'runner flashes (stops), then lunges ' + Math.round(x0 - x2) + 'px');
 
-  // Spitter: keeps range and spits slow blobs that hurt
+  // Spitter: keeps range and spits fast blobs that hurt
   w = await setup(25);
   E(w, "const s = makeNPC(1950, false, null, null, false, 'spitter'); s.abilityTimer = 30; npcs.push(s); alertNPC(s, false); s.state = 'attack'; s.thinkTimer = 999;");
   let fired = false, hpBefore = E(w, 'player.hp'), minD = 1e9;
   for (let i = 0; i < 400; i++) { step(w, 1); if (E(w, 'enemyShots.length') > 0) fired = true; if (i > 150) minD = Math.min(minD, E(w, 'Math.abs(centerX(npcs[0]) - playerCX())')); }
   ok(minD >= 160, 'spitter stays at range (closest ' + Math.round(minD) + 'px)');
   ok(fired && E(w, 'player.hp') < hpBefore, 'spitter fires blobs that damage the player');
-  ok(E(w, 'SPIT_SPEED < MOVE_SPEED'), 'blobs are slower than the player (dodgeable)');
+  ok(E(w, 'SPIT_SPEED') >= 5 && E(w, 'SPIT_SPEED') > E(w, 'MOVE_SPEED'), 'blobs fly fast (5.2, faster than you run): jump them');
+  // Spits often, but always warns first (mouth glows ~0.4s)
+  E(w, "npcs.length = 0; enemyShots.length = 0; player.maxHp = 1e9; player.hp = 1e9; const s2 = makeNPC(1800, false, null, null, false, 'spitter'); s2.abilityTimer = 0; npcs.push(s2); alertNPC(s2, false); s2.state = 'attack'; s2.thinkTimer = 999; window.__spits = 0; window.__warned = true;");
+  for (let i = 0; i < 600; i++) { const before = E(w, 'npcs[0].windup'); step(w, 1); if (E(w, 'enemyShots.length') > 0) { if (before !== 1) E(w, 'window.__warned = false'); E(w, 'window.__spits++; enemyShots.length = 0'); } }
+  ok(E(w, '__spits') >= 6, 'spitter fires about every 1.5-1.8s incl. the warning (' + E(w, '__spits') + ' spits in 10s, was at most 4)');
+  ok(E(w, '__warned'), 'every spit comes right after the 24-frame glow warning');
 
   // Bomber: arms next to the player, explodes for ~30% max HP, hurts allies, gives no reward
   w = await setup(35);

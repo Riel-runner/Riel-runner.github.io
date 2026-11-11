@@ -1505,7 +1505,8 @@ function summonMinions(boss, count) {
 // ═══════════════════════════════════════════════════════════════
 const enemyShots = [];   // spitter blobs
 const blasts     = [];   // bomber explosion effects (visual)
-const SPIT_SPEED      = 3.2;   // slower than the player: outrun it or jump it
+const SPIT_SPEED      = 5.2;   // faster than you run: jump it (the mouth glows ~0.4s before each spit)
+const SPIT_COOLDOWN   = 66;    // frames between spits (+ up to 18 random): ~1.1-1.4s
 const BOMB_RADIUS     = 60;
 const BOMB_PLAYER_DMG = 0.30;  // of the player's max HP (before armor)
 const BOMB_ALLY_DMG   = 0.40;  // of each caught enemy's max HP
@@ -1535,11 +1536,11 @@ function enemyAbility(n) {
       }
       return false;
 
-    case 'spitter':    // glow, then spit a slow blob at the player
+    case 'spitter':    // glow, then spit a fast blob at the player
       if (n.windup > 0) { if (--n.windup === 0) fireEnemyShot(n); return false; }
       if (n.abilityTimer > 0) n.abilityTimer--;
       if (n.abilityTimer <= 0 && dist < 430 && n.state !== 'retreat') {
-        n.windup = 24; n.abilityTimer = 120 + Math.floor(Math.random() * 30);
+        n.windup = 24; n.abilityTimer = SPIT_COOLDOWN + Math.floor(Math.random() * 18);
       }
       return false;
 
