@@ -840,11 +840,18 @@ function updateBullets() {
 //  NPC STATS (scale with level)
 // ═══════════════════════════════════════════════════════════════
 const LVL         = campaign.level || 1;
-// NPC scaling per request:
-// HP: +1 per level (cleaner). Level 1 => 10 HP, Level 99 => ~108 HP
-const NPC_HP      = 10 + Math.max(0, LVL - 1) * 1;
-// Damage: +0.5 per level. Level 1 => 0.5 dmg, Level 99 => ~49.5 dmg
-const NPC_DMG_CONTACT = 0.5 * LVL; // per-frame contact damage (scales with level)
+// Enemies get much tougher deeper in: on top of the base growth below (HP +1 and
+// contact damage +0.5 per level), everything is multiplied by these, so a level 50
+// enemy has ~5x the HP and ~7x the damage of a level 10 one.
+//   regular enemy HP:  L1 10 · L10 22 · L50 117 · L100 324
+//   contact damage:    L1 0.5 · L10 5.5 · L50 37 · L100 99
+// Bosses, minions, spitter shots and bomber blasts scale by the same multipliers.
+const ENEMY_HP_GROWTH  = 0.02;   // +2% HP per level
+const ENEMY_DMG_GROWTH = 0.01;   // +1% damage per level
+const ENEMY_HP_MULT  = 1 + Math.max(0, LVL - 1) * ENEMY_HP_GROWTH;
+const ENEMY_DMG_MULT = 1 + Math.max(0, LVL - 1) * ENEMY_DMG_GROWTH;
+const NPC_HP      = (10 + Math.max(0, LVL - 1)) * ENEMY_HP_MULT;
+const NPC_DMG_CONTACT = 0.5 * LVL * ENEMY_DMG_MULT;
 // Enemies are slightly slower than the player so you can always outrun them
 // (the Speed upgrade widens the gap further).
 const NPC_SPEED   = MOVE_SPEED * 0.9;  // 10% slower than the player
@@ -926,14 +933,14 @@ function pickEnemyKind(level) {
 function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank = false, kind = 'normal') {
   const lvlNow = campaign.level || 1;
   const k = (!isBoss && !isTank && ENEMY_KINDS[kind]) || null;
-  const dynamicNpcHp = 10 + Math.max(0, lvlNow - 1) * 1;
+  const dynamicNpcHp = NPC_HP;            // grows with the level (see NPC STATS)
   const tankHp       = dynamicNpcHp * 3;  // 3x normal HP
   const hpBase = isBoss
-    ? (customHp || (BOSS_BASE_HP + (Math.floor(lvlNow / 10) - 1) * BOSS_HP_PER))
+    ? Math.round((customHp || (BOSS_BASE_HP + (Math.floor(lvlNow / 10) - 1) * BOSS_HP_PER)) * ENEMY_HP_MULT)
     : isTank ? Math.round(tankHp * (levelEvent.enemyHpMult || 1)) : Math.round(dynamicNpcHp * (k ? k.hp : 1) * (levelEvent.enemyHpMult || 1));
   const dmgBase = isBoss
-    ? (customDmg || (BOSS_BASE_DMG + (Math.floor(lvlNow / 10) - 1) * BOSS_DMG_PER))
-    : (0.5 * lvlNow); // tanks deal same contact damage as normals
+    ? (customDmg || (BOSS_BASE_DMG + (Math.floor(lvlNow / 10) - 1) * BOSS_DMG_PER)) * ENEMY_DMG_MULT
+    : NPC_DMG_CONTACT; // tanks deal same contact damage as normals
 
   const w = isBoss ? NPC_W * 2 : isTank ? Math.round(NPC_W * 1.5) : NPC_W;
   const h = isBoss ? NPC_H * 2 : isTank ? Math.round(NPC_H * 1.5) : NPC_H;
@@ -1533,7 +1540,7 @@ function fireEnemyShot(n) {
   const tx = playerCX() - sx, ty = (player.y + PLAYER_H / 2) - sy;
   const len = Math.hypot(tx, ty) || 1;
   enemyShots.push({ x: sx, y: sy, vx: tx / len * SPIT_SPEED, vy: ty / len * SPIT_SPEED, life: 200,
-                    dmg: Math.max(3, player.maxHp * 0.07) });
+                    dmg: Math.max(3, player.maxHp * 0.07) * ENEMY_DMG_MULT }); // 7% of max HP, more on later levels
 }
 
 function updateEnemyShots() {
@@ -1570,7 +1577,7 @@ function explodeBomber(n) {
   blasts.push({ x: cx, y: cy, t: 0 });
   playDeathSound();
   if (!player.dead && Math.hypot(playerCX() - cx, (player.y + PLAYER_H / 2) - cy) < BOMB_RADIUS) {
-    const dmg = damagePlayer(player.maxHp * BOMB_PLAYER_DMG);
+    const dmg = damagePlayer(player.maxHp * BOMB_PLAYER_DMG * ENEMY_DMG_MULT); // 30% of max HP, more on later levels
     spawnDmgNumber(player.x, player.y - 12, dmg, '#e67e22');
   }
   n.dead = true; n.deadTimer = 120; n.hp = 0; // blown up: no skull, no reward

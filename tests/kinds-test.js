@@ -74,7 +74,8 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   step(w, 40);
   const dmgPct = (1000 - E(w, 'player.hp')) / 10;
   ok(armed && E(w, 'npcs[0].dead'), 'bomber arms next to the player, then explodes');
-  ok(dmgPct >= 29 && dmgPct < 40, 'explosion hits the player for ~30% max HP (' + Math.round(dmgPct) + '%)');
+  const bombPct = 30 * E(w, 'ENEMY_DMG_MULT');   // 30% of max HP, scaled up by the level
+  ok(dmgPct >= bombPct - 1 && dmgPct < bombPct + 10, 'explosion hits the player for ~30% max HP x level scaling (' + Math.round(dmgPct) + '%, want ~' + Math.round(bombPct) + '%)');
   E(w, 'const b2 = makeNPC(1700, false, null, null, false, "bomber"), a2 = makeNPC(1730); npcs.push(b2, a2); window.__a2 = a2.hp; explodeBomber(b2);');
   ok(E(w, 'npcs[3].hp < __a2 || npcs[3].dead') && E(w, 'npcs[2].dead'), 'the blast also hurts enemies caught in it');
 
@@ -98,6 +99,16 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   E(w, 'player.x = npcs[0].x - 60;');
   const mx0 = E(w, 'centerX(npcs[0])'); step(w, 30);
   ok(E(w, 'centerX(npcs[0])') > mx0 + 20, 'medic runs away when the player gets close');
+
+  // Enemies get much tougher with the level (level 50 vs level 10)
+  const stat = async lvl => { w = await setup(lvl); return JSON.parse(E(w, "(() => { const n = makeNPC(1600), t = makeNPC(1600, false, null, null, true), b = makeNPC(1600, true); return JSON.stringify({ hp: n.maxHp, dmg: n.contactDamage, tank: t.maxHp, bossHp: b.maxHp, bossDmg: b.contactDamage, shot: Math.max(3, player.maxHp * 0.07) * ENEMY_DMG_MULT }); })()")); };
+  const L1 = await stat(1), L10 = await stat(10), L50 = await stat(50), L100 = await stat(100);
+  ok(L1.hp === 10 && L1.dmg === 0.5, 'level 1 enemies unchanged (10 HP, 0.5 damage)');
+  ok(L50.hp >= 4.5 * L10.hp && L50.tank >= 4.5 * L10.tank, 'level 50 enemies have ~5x the HP of level 10 (' + L10.hp + ' -> ' + L50.hp + ')');
+  ok(L50.dmg >= 6 * L10.dmg, 'level 50 enemies hit ~7x harder than level 10 (' + L10.dmg.toFixed(1) + ' -> ' + L50.dmg.toFixed(1) + ')');
+  ok(L50.bossHp > 4 * L10.bossHp && L50.bossDmg > 10 * L10.bossDmg, 'bosses scale too (HP ' + L10.bossHp + ' -> ' + L50.bossHp + ', damage ' + L10.bossDmg.toFixed(1) + ' -> ' + L50.bossDmg.toFixed(1) + ')');
+  ok(L50.shot > L10.shot * 1.3, 'spitter shots hit harder on later levels');
+  ok(L100.hp > L50.hp && L100.dmg > L50.dmg, 'and keep growing to level 100 (' + L100.hp + ' HP, ' + L100.dmg.toFixed(0) + ' damage)');
 
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });

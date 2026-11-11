@@ -80,7 +80,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   for (let i = 0; i < 40 && (!horde || !paper); i++) {
     put({ ...base, level: 6, lives: 3, hp: 170 });
     await go('game.html');
-    const r = JSON.parse(f.contentWindow.eval("JSON.stringify({ id: levelEvent.id, n: npcs.length, want: Math.min(NPC_COUNT * 2, 30), hp: npcs.filter(n => n.kind === 'normal' && !n.isTank).map(n => n.maxHp || n.hp), full: 10 + (6 - 1) })"));
+    const r = JSON.parse(f.contentWindow.eval("JSON.stringify({ id: levelEvent.id, n: npcs.length, want: Math.min(NPC_COUNT * 2, 30), hp: npcs.filter(n => n.kind === 'normal' && !n.isTank).map(n => n.maxHp || n.hp), full: NPC_HP })"));
     if (r.id === 'bonus_enemies') horde = r;
     if (r.id === 'enemy_glass') paper = r;
   }
