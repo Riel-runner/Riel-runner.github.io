@@ -10,10 +10,17 @@ function playToggleSound() {
   sound.play().catch(() => {});
 }
 
-// Return to the page that opened Settings. Only allow known in-game destinations.
+// Return to the exact section that opened Settings.
+// Use a distinct value for the upgrade shop so it can't be confused with store.html
+// (the cosmetics shop).
 const returnTo = new URLSearchParams(window.location.search).get('returnTo');
+const backButton = document.getElementById('backButton');
 if (returnTo === 'game.html') {
-  document.getElementById('backButton').href = 'game.html?resumePaused=1';
+  backButton.href = 'game.html?resumePaused=1';
+} else if (returnTo === 'upgrade-shop') {
+  backButton.href = 'shop.html';
+} else if (returnTo === 'cosmetics-shop') {
+  backButton.href = 'store.html';
 }
 
 const DEFAULTS = {
