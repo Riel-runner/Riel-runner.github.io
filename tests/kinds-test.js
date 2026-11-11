@@ -105,6 +105,21 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   const mx0 = E(w, 'centerX(npcs[0])'); step(w, 30);
   ok(E(w, 'centerX(npcs[0])') > mx0 + 20, 'medic runs away when the player gets close');
 
+  // New enemy sprite: every type draws inside its box (accessories may poke out a little),
+  // in every walk step, and the walk cycle only runs while moving
+  w = await setup(45);
+  const spr = JSON.parse(E(w, "(() => { const P = CanvasRenderingContext2D.prototype, fr = P.fillRect; let box = null, n = 0; P.fillRect = function (x, y, ww, hh) { if (box) { n++; box.x0 = Math.min(box.x0, x); box.y0 = Math.min(box.y0, y); box.x1 = Math.max(box.x1, x + ww); box.y1 = Math.max(box.y1, y + hh); } return fr.apply(this, arguments); }; const out = {}; for (const k of Object.keys(RielEnemySprite.LOOKS)) for (let st = 0; st < 4; st++) { box = { x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 }; n = 0; RielEnemySprite.draw(ctx, 100, 100, 18, 24, { kind: k, step: st, facing: 1 }); out[k + st] = { n, x0: box.x0 - 100, y0: box.y0 - 100, x1: box.x1 - 118, y1: box.y1 - 124 }; } box = null; P.fillRect = fr; return JSON.stringify(out); })()"));
+  const bad = Object.entries(spr).filter(([, b]) => b.n < 20 || b.x0 < -4 || b.x1 > 4 || b.y0 < -6 || b.y1 > 0.01);
+  ok(bad.length === 0, 'enemy sprite: all 8 looks x 4 walk steps draw inside their box, feet on the ground (' + (bad.map(b => b[0]).join(', ') || 'all fine') + ')');
+  E(w, "npcs.length = 0; const m = makeNPC(1600); m.lastDrawX = m.x; npcs.push(m); gameState = 'playing';");
+  const steps = new Set();
+  for (let i = 0; i < 40; i++) { E(w, 'npcs[0].x += 2; drawNPCs();'); steps.add(E(w, 'npcs[0].walkStepNow')); }
+  ok(steps.size === 4, 'walking enemies cycle through all 4 leg steps (' + [...steps].sort().join(',') + ')');
+  E(w, 'drawNPCs(); drawNPCs();');
+  ok(E(w, 'npcs[0].walkStepNow') === 0, 'standing still: both feet down');
+  E(w, "npcs.length = 0; for (const k of ['normal', 'runner', 'spitter', 'bomber', 'shielder', 'medic']) npcs.push(makeNPC(1500 + npcs.length * 30, false, null, null, false, k)); npcs.push(makeNPC(1700, false, null, null, true)); npcs.push(makeNPC(1750, true)); npcs.forEach(n => { n.windup = 5; n.fuse = n.kind === 'bomber' ? 5 : 0; n.healPulse = 10; n.touching = true; }); drawNPCs();");
+  ok(true, 'every enemy type (and tank, boss) draws in game, mid-attack, without errors');
+
   // Enemies get much tougher with the level (level 50 vs level 10)
   const stat = async lvl => { w = await setup(lvl); return JSON.parse(E(w, "(() => { const n = makeNPC(1600), t = makeNPC(1600, false, null, null, true), b = makeNPC(1600, true); return JSON.stringify({ hp: n.maxHp, dmg: n.contactDamage, tank: t.maxHp, bossHp: b.maxHp, bossDmg: b.contactDamage, shot: Math.max(3, player.maxHp * 0.07) * ENEMY_DMG_MULT }); })()")); };
   const L1 = await stat(1), L10 = await stat(10), L50 = await stat(50), L100 = await stat(100);

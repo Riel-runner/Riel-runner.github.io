@@ -2028,35 +2028,21 @@ function damagePlayer(amount, isTick) {
 // ═══════════════════════════════════════════════════════════════
 //  DRAW NPCs
 // ═══════════════════════════════════════════════════════════════
-// Body/eye colours for each enemy type (regular enemies stay red).
-const ENEMY_STYLE = {
-  normal:   { body: '#c0392b', eye: '#f5c400' },
-  runner:   { body: '#e67e22', eye: '#ffffff' },
-  spitter:  { body: '#27ae60', eye: '#f5c400' },
-  bomber:   { body: '#2c2c34', eye: '#e74c3c' },
-  shielder: { body: '#7f8c8d', eye: '#5dade2' },
-  medic:    { body: '#dfe6e9', eye: '#2e86de' },
-};
+// Colours, sizes and accessories per enemy type: js/enemy-sprite.js (RielEnemySprite.LOOKS).
 
-// Small details that show what each special enemy does.
-function drawEnemyExtras(n, sx, by, S, ep) {
-  const facingRight = player.x > n.x;
+// Effects around special enemies that aren't part of the pixel art (the art itself,
+// with each type's accessory, comes from js/enemy-sprite.js).
+function drawEnemyExtras(n, sx, by, facingRight) {
   switch (n.kind) {
     case 'runner':   // speed streaks behind it while moving
-      if (n.animFrame === 1 || n.lungeTimer > 0) {
-        ctx.fillStyle = 'rgba(230,126,34,0.5)';
+      if (n.walkStepNow % 2 === 1 || n.lungeTimer > 0) {
+        ctx.fillStyle = 'rgba(243,156,18,0.5)';
         const bx = facingRight ? sx - 8 : sx + n.w + 2;
         ctx.fillRect(bx, by + 9, 6, 2); ctx.fillRect(bx + (facingRight ? -3 : 3), by + 13, 6, 2);
       }
       break;
-    case 'spitter':  // mouth that glows before it spits
-      ep(facingRight ? 5 : 0, 2, n.windup > 0 && frameCount % 6 < 3 ? '#c8ffd8' : '#145a32');
-      if (n.windup > 0) { ctx.fillStyle = 'rgba(46,204,113,0.35)'; ctx.fillRect(sx + (facingRight ? n.w : -6), by + 3, 6, 9); }
-      break;
-    case 'bomber':   // fuse with a spark (fast flashing once armed)
-      ep(3, -1, '#888870');
-      ctx.fillStyle = (n.fuse > 0 ? frameCount % 4 < 2 : frameCount % 20 < 10) ? '#f5c400' : '#e74c3c';
-      ctx.fillRect(sx + 3 * S, by - 2 * S, S, S);
+    case 'spitter':  // glow in front of the mouth before it spits
+      if (n.windup > 0) { ctx.fillStyle = 'rgba(46,204,113,0.35)'; ctx.fillRect(sx + (facingRight ? n.w : -6), by + 8, 6, 8); }
       break;
     case 'shielder': { // shield on the side it faces
       const shx = n.facing > 0 ? sx + n.w : sx - 5;
@@ -2066,8 +2052,7 @@ function drawEnemyExtras(n, sx, by, S, ep) {
       ctx.fillRect(shx + 1, by + 4, 3, n.h - 10);
       break;
     }
-    case 'medic':    // red cross, and a green ring when it heals
-      ep(2, 3, '#e74c3c'); ep(3, 3, '#e74c3c'); ep(2, 4, '#e74c3c'); ep(3, 4, '#e74c3c');
+    case 'medic':    // green ring when it heals
       if (n.healPulse > 0) {
         ctx.strokeStyle = `rgba(46,204,113,${n.healPulse / 24})`;
         ctx.lineWidth = 2;
@@ -2091,122 +2076,36 @@ function drawNPCs() {
     }
 
     const by = n.y;
-
-    if (n.isBoss) {
-      // Boss: draw scaled-up pixel art (2x the NPC pixels)
-      const S = PIXEL * 2; // scale per-pixel for boss
-      // blue boss, flash red when touching, flash white while winding up a charge (warning)
-      const body = (n.windup > 0 && frameCount % 6 < 3) ? '#ffffff' : n.touching ? '#e74c3c' : '#2e86de';
-      const eye  = '#ffffff';
-      const boot = '#11131a';
-
-      // Helper: draw a boss pixel at (col,row) in the 6x7 layout scaled by S
-      function bep(col, row, color) {
-        ctx.fillStyle = color;
-        ctx.fillRect(sx + col * S, by + row * S, S, S);
-      }
-
-      // Simple 6x7 boss sprite (based on NPC but larger)
-      // Row 0
-      bep(1,0,body); bep(2,0,body); bep(3,0,body); bep(4,0,body);
-      // Row 1
-      bep(0,1,body); bep(1,1,eye);  bep(2,1,body); bep(3,1,eye);  bep(4,1,body); bep(5,1,body);
-      // Row 2
-      bep(0,2,body); bep(1,2,body); bep(2,2,body); bep(3,2,body); bep(4,2,body); bep(5,2,body);
-      // Row 3-4 body
-      for (let c = 0; c <= 5; c++) { bep(c,3,body); bep(c,4,body); }
-      // Row 5-6 legs (bigger boots)
-      if (n.animFrame === 0) {
-        bep(1,5,boot); bep(3,5,boot); bep(1,6,boot); bep(3,6,boot);
-      } else {
-        bep(0,5,boot); bep(2,5,boot); bep(1,6,boot); bep(4,6,boot);
-      }
-
-      // Draw a simple eye highlight
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(sx + Math.round((2 * S)), by + Math.round(1 * S), Math.max(1, S/2), Math.max(1, S/2));
-
-      // Boss HP bar larger and centered
-      if (settings.hpBars) {
-        const bw = n.w + 8;
-        ctx.fillStyle = '#c0392b';
-        ctx.fillRect(sx - 4, by - 12, bw, 6);
-        ctx.fillStyle = '#2ecc71';
-        ctx.fillRect(sx - 4, by - 12, Math.max(0, bw * (n.hp / n.maxHp)), 6);
-      }
-
-      continue;
+    const facingRight = player.x > n.x;
+    // Walk cycle: steps advance with how far it moved since the last frame
+    if (gameState === 'playing') {
+      const moved = n.onGround ? n.x - (n.lastDrawX == null ? n.x : n.lastDrawX) : 0;
+      n.walkStepNow = window.RielEnemySprite.walkStep(n, moved, NPC_SPEED);
+      n.lastDrawX = n.x;
     }
 
-    // ── TANK sprite (dark purple, 1.5x scale) ──
-    if (n.isTank) {
-      const S = Math.round(PIXEL * 1.5);
-      const body = n.touching ? '#e74c3c' : '#6c2eb9';
-      const eye  = '#f5c400';
-      const boot = '#111122';
-      function tp(col, row, color) {
-        ctx.fillStyle = color;
-        ctx.fillRect(sx + col * S, by + row * S, S, S);
-      }
-      // Head
-      tp(1,0,body); tp(2,0,body); tp(3,0,body); tp(4,0,body);
-      tp(0,1,body); tp(1,1,eye);  tp(2,1,body); tp(3,1,eye);  tp(4,1,body); tp(5,1,body);
-      tp(0,2,body); tp(1,2,body); tp(2,2,body); tp(3,2,body); tp(4,2,body); tp(5,2,body);
-      // Body (extra thick — 3 rows instead of 2)
-      for(let c=0;c<=5;c++){ tp(c,3,body); tp(c,4,body); tp(c,5,body); }
-      // Legs
-      if (n.animFrame === 0) {
-        tp(1,6,boot); tp(3,6,boot); tp(1,7,boot); tp(3,7,boot);
-      } else {
-        tp(0,6,boot); tp(2,6,boot); tp(1,7,boot); tp(4,7,boot);
-      }
-      // HP bar
-      if (settings.hpBars) {
-        const bw = n.w + 4;
-        ctx.fillStyle = '#c0392b';
-        ctx.fillRect(sx - 2, by - 7, bw, 4);
-        ctx.fillStyle = '#9b59b6';
-        ctx.fillRect(sx - 2, by - 7, Math.max(0, bw * (n.hp / n.maxHp)), 4);
-      }
-      continue;
-    }
+    // Colour: white flash while winding up a telegraphed attack (boss charge, runner
+    // lunge, bomber fuse), red while it's touching you
+    const kind = n.isBoss ? 'boss' : n.isTank ? 'tank' : n.kind;
+    const warning = (n.windup > 0 && (n.isBoss || n.kind === 'runner')) || n.fuse > 0;
+    const flash = warning && frameCount % 6 < 3 ? '#ffffff'
+      : n.touching ? (kind === 'normal' ? '#ff7a7a' : '#e74c3c') : null;
+    window.RielEnemySprite.draw(ctx, sx, by, n.w, n.h, {
+      kind, body: flash, step: n.walkStepNow || 0, facing: facingRight ? 1 : -1,
+      glow: n.kind === 'spitter' && n.windup > 0 && frameCount % 6 < 3,                         // mouth lights up
+      spark: n.fuse > 0 ? frameCount % 4 < 2 : frameCount % 20 < 10,                            // bomber fuse
+    });
+    if (!n.isBoss && !n.isTank) drawEnemyExtras(n, sx, by, facingRight);
 
-    // Flash red briefly when hit (hitFlash stored on npc)
-    const S  = PIXEL;
-
-    function ep(col, row, color) {
-      ctx.fillStyle = color;
-      ctx.fillRect(sx + col * S, by + row * S, S, S);
-    }
-
-    // Colours per enemy type; flash white while winding up an attack (runner lunge, bomber fuse)
-    const style = ENEMY_STYLE[n.kind] || ENEMY_STYLE.normal;
-    const warning = (n.windup > 0 && n.kind === 'runner') || n.fuse > 0;
-    const body = warning && frameCount % 6 < 3 ? '#ffffff' : n.touching ? '#e74c3c' : style.body;
-    const eye  = style.eye;
-    const boot = '#222233';
-
-    // Head
-    ep(1,0,body); ep(2,0,body); ep(3,0,body); ep(4,0,body);
-    ep(0,1,body); ep(1,1,eye);  ep(2,1,body); ep(3,1,eye);  ep(4,1,body); ep(5,1,body);
-    ep(0,2,body); ep(1,2,body); ep(2,2,body); ep(3,2,body); ep(4,2,body); ep(5,2,body);
-    // Body
-    for(let c=0;c<=5;c++){ ep(c,3,body); ep(c,4,body); }
-    // Legs animated
-    if (n.animFrame === 0) {
-      ep(1,5,boot); ep(3,5,boot); ep(1,6,boot); ep(3,6,boot);
-    } else {
-      ep(0,5,boot); ep(2,5,boot); ep(1,6,boot); ep(4,6,boot);
-    }
-    drawEnemyExtras(n, sx, by, S, ep);
-
-    // HP bar (respects settings)
+    // HP bar (respects settings), above any hat / crown / fuse
     if (settings.hpBars) {
-      const bw = n.w + 4;
+      const big = n.isBoss;
+      const bw = n.w + (big ? 8 : 4), bh = big ? 6 : 4;
+      const barY = by - (big ? 18 : n.kind === 'bomber' ? 11 : 7);
       ctx.fillStyle = '#c0392b';
-      ctx.fillRect(sx - 2, by - 7, bw, 4);
-      ctx.fillStyle = '#2ecc71';
-      ctx.fillRect(sx - 2, by - 7, Math.max(0, bw * (n.hp / n.maxHp)), 4);
+      ctx.fillRect(sx - bw / 2 + n.w / 2, barY, bw, bh);
+      ctx.fillStyle = n.isTank ? '#9b59b6' : '#2ecc71';
+      ctx.fillRect(sx - bw / 2 + n.w / 2, barY, Math.max(0, bw * (n.hp / n.maxHp)), bh);
     }
   }
 }

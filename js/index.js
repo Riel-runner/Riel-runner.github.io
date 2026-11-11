@@ -10,11 +10,13 @@ const WEAPON_SKIN = COS.equipped('weapon');
 const TRAIL_ID    = COS.equipped('trail').id;
 const PLAYER_CLASS = COS.equipped('class');     // gun shape (class weapon)
 
-// Enemy looks, matching the game (regular / runner / tank).
+// Enemy types (same sprite, colours and accessories as the game: js/enemy-sprite.js).
+// Each is 6 x 8 cells, so the 12 x 16 pixel art fits exactly.
 const ENEMY_TYPES = {
-  normal: { body: '#c0392b', eye: '#f5c400', hp: 3, speed: 1.0, size: 1.0 },
-  runner: { body: '#e67e22', eye: '#ffffff', hp: 2, speed: 1.6, size: 1.0 },
-  tank:   { body: '#6c2eb9', eye: '#f5c400', hp: 6, speed: 0.6, size: 1.5 },
+  normal:  { hp: 3, speed: 1.0, size: 1.0 },
+  runner:  { hp: 2, speed: 1.6, size: 1.0 },
+  spitter: { hp: 3, speed: 0.9, size: 1.0 },
+  tank:    { hp: 6, speed: 0.6, size: 1.5 },
 };
 const ENEMY_COUNT = 4;
 
@@ -29,7 +31,7 @@ function resize() {
   S = Math.max(4, Math.min(8, Math.round(H / 100)));          // bigger sprites on bigger screens
   FLOOR_Y = H - Math.max(36, Math.round(H * 0.08));
   player.x = Math.max(12, Math.round(W * 0.06));
-  for (const e of enemies) { e.cell = Math.round(S * ENEMY_TYPES[e.type].size); e.y = FLOOR_Y - 7 * e.cell; }
+  for (const e of enemies) { e.cell = Math.round(S * ENEMY_TYPES[e.type].size); e.y = FLOOR_Y - 8 * e.cell; }
 }
 resize();
 window.addEventListener('resize', resize);
@@ -39,9 +41,9 @@ const frontLine = () => player.x + 15 * S;
 
 function spawnEnemy(x) {
   const r = Math.random();
-  const type = r < 0.2 ? 'tank' : r < 0.45 ? 'runner' : 'normal';
+  const type = r < 0.2 ? 'tank' : r < 0.4 ? 'runner' : r < 0.55 ? 'spitter' : 'normal';
   const t = ENEMY_TYPES[type], cell = Math.round(S * t.size);
-  enemies.push({ type, x, y: FLOOR_Y - 7 * cell, cell, hp: t.hp, maxHp: t.hp,
+  enemies.push({ type, x, y: FLOOR_Y - 8 * cell, cell, step: 0, hp: t.hp, maxHp: t.hp,
                  dead: false, deadTimer: 0, frame: Math.floor(Math.random() * 20), hitFlash: 0, hop: 0 });
 }
 // Start with a few already close, the rest walking in.
@@ -84,7 +86,7 @@ function shadow(cx, w) {
 const SKULL = [[1,0],[2,0],[3,0],[0,1],[2,1],[4,1],[0,2],[1,2],[2,2],[3,2],[4,2],[1,3],[3,3],[1,4],[2,4],[3,4]];
 
 function drawEnemy(e) {
-  const c = e.cell, t = ENEMY_TYPES[e.type];
+  const c = e.cell;
   if (e.dead) {                       // skull where it fell
     const sy = FLOOR_Y - 5 * c;
     ctx.fillStyle = '#e8e8d0';
@@ -95,14 +97,11 @@ function drawEnemy(e) {
   }
   const lift = e.hop > 0 ? Math.round(Math.sin(e.hop / 10 * Math.PI) * 3 * S) : 0;
   const y0 = e.y - lift;
-  const body = e.hitFlash > 0 ? '#ffffff' : t.body, eye = t.eye, boot = '#222233';
-  const ep = (x, y, col) => { ctx.fillStyle = col; ctx.fillRect(e.x + x * c, y0 + y * c, c, c); };
   shadow(e.x + 3 * c, 6 * c);
-  ep(1,0,body); ep(2,0,body); ep(3,0,body); ep(4,0,body);
-  ep(0,1,body); ep(1,1,eye);  ep(2,1,body); ep(3,1,eye);  ep(4,1,body); ep(5,1,body);
-  for (let i = 0; i <= 5; i++) { ep(i,2,body); ep(i,3,body); ep(i,4,body); }
-  if (Math.floor(e.frame / 10) % 2 === 0) { ep(1,5,boot); ep(3,5,boot); ep(1,6,boot); ep(3,6,boot); }
-  else                                    { ep(0,5,boot); ep(2,5,boot); ep(0,6,boot); ep(4,6,boot); }
+  window.RielEnemySprite.draw(ctx, e.x, y0, 6 * c, 8 * c, {
+    kind: e.type, step: e.step, facing: -1,                 // walking left, toward the player
+    body: e.hitFlash > 0 ? '#ffffff' : null,
+  });
   // HP bar
   const bw = 6 * c, bh = Math.max(3, Math.round(S / 2)), by = y0 - Math.max(6, S);
   ctx.fillStyle = '#c0392b'; ctx.fillRect(e.x, by, bw, bh);
@@ -168,9 +167,11 @@ function update(tick) {
     e.frame++;
     if (e.hitFlash > 0) e.hitFlash--;
     const stop = frontLine();
+    const x0 = e.x;
     if (e.x > stop) e.x = Math.max(stop, e.x - ENEMY_TYPES[e.type].speed * S * 0.25);
     else if (e.hop > 0) e.hop--;
     else if (Math.random() < 0.02) e.hop = 10;
+    e.step = window.RielEnemySprite.walkStep(e, x0 - e.x, S * 0.25);   // walk cycle while marching
   }
 
   // Trail from the shop (drifts back as the floor scrolls)
