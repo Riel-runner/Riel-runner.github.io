@@ -11,7 +11,7 @@ const f = document.getElementById('f'), log = [];
 const _rawSet = Storage.prototype.setItem;
 const _seal = window.RielCosmetics.withKey(window.RielCosmetics.claim());   // claimed while this test page loads
 let _sealing = false;
-Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(o); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
+Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(Object.assign({ wipe: 1 }, o)); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
 const ok = (c, m) => log.push((c ? 'PASS ' : 'FAIL ') + m);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 6000) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch {} await wait(50); } return false; }
@@ -127,6 +127,21 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   edit('rielrunner_profile', p => { p.owned = { class: ['gunner', 'sniper'] }; p.equipped = { class: 'sniper' }; });
   await go('store.html');
   ok(!f.contentWindow.RielCosmetics.owns('class', 'sniper'), 'unlocking a class by editing storage does not work');
+  localStorage.removeItem('rielrunner_tampered');
+  setProfile({ wipe: 0, gems: 175, owned: { class: ['gunner', 'smg', 'sniper'], weapon: ['standard', 'gold'], player: ['runner', 'ninja'], trail: ['none', 'flame'] }, equipped: { class: 'sniper', weapon: 'gold', player: 'ninja', trail: 'flame' }, abilities: { owned: { shield: { level: 2, copies: 1 } }, equipped: 'shield' } });
+  await go('store.html');
+  let Wr = f.contentWindow.RielCosmetics;
+  ok(!Wr.owns('class', 'smg') && !Wr.owns('class', 'sniper') && !Wr.owns('weapon', 'gold') && !Wr.owns('player', 'ninja') && !Wr.owns('trail', 'flame'), 'shop reset: every bought class, weapon skin, player skin and trail is deleted');
+  ok(Wr.equipped('class').id === 'gunner' && Wr.equipped('weapon').id === 'standard' && Wr.equipped('player').id === 'runner' && Wr.equipped('trail').id === 'none', 'shop reset: the free defaults are equipped');
+  ok(profile().gems === 175 && !!f.contentWindow.RielAbilities.owned('shield'), 'shop reset: no gem refund, gems (175) and abilities kept');
+  await go('index.html');
+  ok(/SHOP RESET/.test((f.contentDocument.querySelector('.tamper-note') || {}).textContent || ''), 'title screen says the shop was reset');
+  await go('store.html');
+  ok(f.contentWindow.RielCosmetics.buy('weapon', 'gold').ok && profile().gems === 25, 'after the reset, skins can be bought again');
+  await go('store.html');
+  ok(f.contentWindow.RielCosmetics.owns('weapon', 'gold'), 'the reset only happens once: things bought afterwards stay');
+  await go('index.html');
+  ok(!f.contentDocument.querySelector('.tamper-note'), 'the shop reset notice only shows once');
   setProfile({ gems: 40 });
   await go('store.html');
   ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'real saves still load normally');
@@ -175,6 +190,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=90000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=120000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));

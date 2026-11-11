@@ -80,6 +80,11 @@ window.RielCosmetics = (function () {
   const BACKUP_KEY = 'rielrunner_profile_b';
   const GUARD_KEY  = 'rielrunner_pg';           // set once a signed save exists
   const TAMPER_KEY = 'rielrunner_tampered';     // shown once on the title screen
+  // Shop reset for everyone (user asked 2026-11-11): every bought class, weapon skin, player
+  // skin and trail is deleted once, the next time each player opens the game. No gem refund;
+  // abilities are kept. Bump SHOP_WIPE to do it again.
+  const SHOP_WIPE = 1;
+  const WIPE_NOTE_KEY = 'rielrunner_wiped';      // 'shop reset' notice, shown once
   const LEGACY_UNTIL = Date.UTC(2026, 10, 18);    // unsigned (pre-protection) saves accepted until Nov 18, 2026
   // Writing saves and giving gems only works with KEY. Each game script claims it while
   // the page is still loading (claim() returns null afterwards), so the same calls typed
@@ -136,10 +141,11 @@ window.RielCosmetics = (function () {
     write(p);
     return p;
   }
-  // 'restored' / 'reset' if edited save data was caught (once), else null.
+  // 'penalty' / 'reset' if edited save data was caught, 'wipe' after the shop reset (once each), else null.
   function takeTamperNotice() {
     let v = null;
     try { v = localStorage.getItem(TAMPER_KEY); localStorage.removeItem(TAMPER_KEY); } catch {}
+    try { if (localStorage.getItem(WIPE_NOTE_KEY)) { localStorage.removeItem(WIPE_NOTE_KEY); v = v || 'wipe'; } } catch {}
     return v;
   }
 
@@ -150,6 +156,13 @@ window.RielCosmetics = (function () {
     p.gems = Math.max(0, Math.floor(Number(p.gems) || 0));
     p.owned = p.owned || {};
     p.equipped = p.equipped || {};
+    if (p.wipe !== SHOP_WIPE) {
+      const had = CATEGORIES.some(c => (Array.isArray(p.owned[c]) ? p.owned[c] : []).some(id => id !== DEFAULTS[c]));
+      for (const c of CATEGORIES) { p.owned[c] = [DEFAULTS[c]]; p.equipped[c] = DEFAULTS[c]; }
+      p.wipe = SHOP_WIPE;
+      write(p);
+      if (had) try { localStorage.setItem(WIPE_NOTE_KEY, '1'); } catch {}
+    }
     for (const c of CATEGORIES) {
       const owned = new Set(Array.isArray(p.owned[c]) ? p.owned[c] : []);
       owned.add(DEFAULTS[c]);                                      // free items are always owned

@@ -11,7 +11,7 @@ const f = document.getElementById('f'), log = [];
 const _rawSet = Storage.prototype.setItem;
 const _seal = window.RielCosmetics.withKey(window.RielCosmetics.claim());   // claimed while this test page loads
 let _sealing = false;
-Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(o); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
+Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(Object.assign({ wipe: 1 }, o)); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
 const ok = (c, m) => log.push((c ? 'PASS ' : 'FAIL ') + m);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 6000) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch {} await wait(50); } return false; }
