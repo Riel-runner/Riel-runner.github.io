@@ -56,7 +56,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   ok(w.eval('ARMOR_BLOCK') === 0.5 && w.eval('PLAYER_SPEED_MULT') === 1.5, 'max armor blocks 50%, max speed = 1.5x');
   ok(w.eval('MAG_SIZE') === 70 && w.eval('player.bullets') === 70, 'max mag size: 70 rounds, level starts with a full 70-round mag');
   ok(w.eval('PLAYER_SHOOT_CD') === 9 && w.eval('RELOAD_FRAMES') === 54, 'max fire rate: 9 frames/shot (was 18); max reload: 0.9s (was 3s)');
-  w.eval('player.hp = 100; window.__dmg = damagePlayer(20);');
+  w.eval('applyLevelEvent(null); player.hp = 100; window.__dmg = damagePlayer(20);'); // no random event (Glass Cannon adds damage)
   ok(w.eval('player.hp') === 90 && w.__dmg === 10, 'armor halves a 20-damage hit to 10');
   put({ ...base, level: 3, lives: 3, hp: 170 });
   await go('game.html'); w = f.contentWindow;

@@ -58,6 +58,35 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   await go('game.html');
   ok(f.contentWindow.eval('player.x') !== 300 && f.contentWindow.eval('gameState') === 'playing', 'stale save from another level is ignored');
 
+  // ── The level event survives pausing to Settings / quitting (was re-rolled on load) ──
+  put({ ...base, level: 6, lives: 3, hp: 170 });
+  await go('game.html');
+  w = f.contentWindow;
+  w.eval("applyLevelEvent(LEVEL_EVENTS.find(e => e.id === 'low_gravity')); PAUSE_ITEMS[1].action();"); // SETTINGS
+  await until(() => /settings\.html/.test(f.contentWindow.location.href));
+  ok(JSON.parse(localStorage.getItem('activeCampaign')).levelState.eventId === 'low_gravity', 'the level event is saved with the level');
+  let kept = 0, clean = 0;
+  for (let i = 0; i < 4; i++) {
+    await go('game.html');
+    const ev = JSON.parse(f.contentWindow.eval("JSON.stringify({ id: levelEvent.id, g: levelEvent.gravityMult, r: levelEvent.rielMult, x: levelEvent.extraEnemyMult, hp: levelEvent.enemyHpMult, banner: eventBannerTimer })"));
+    if (ev.id === 'low_gravity' && ev.g === 0.45 && ev.banner === 0) kept++;
+    if (ev.r === 1 && ev.x === 1 && ev.hp === 1) clean++;
+  }
+  ok(kept === 4, 'resuming keeps the same event every time, without its banner again (' + kept + ' / 4)');
+  ok(clean === 4, 'the event rolled on load is fully undone, effects never stack (' + clean + ' / 4)');
+
+  // ── HORDE / PAPER ENEMIES apply to the enemies that spawn (event picked before spawning) ──
+  let horde = null, paper = null;
+  for (let i = 0; i < 40 && (!horde || !paper); i++) {
+    put({ ...base, level: 6, lives: 3, hp: 170 });
+    await go('game.html');
+    const r = JSON.parse(f.contentWindow.eval("JSON.stringify({ id: levelEvent.id, n: npcs.length, want: Math.min(NPC_COUNT * 2, 30), hp: npcs.filter(n => n.kind === 'normal' && !n.isTank).map(n => n.maxHp || n.hp), full: 10 + (6 - 1) })"));
+    if (r.id === 'bonus_enemies') horde = r;
+    if (r.id === 'enemy_glass') paper = r;
+  }
+  ok(horde && horde.n === horde.want, 'HORDE spawns double the enemies (' + (horde ? horde.n + ' / ' + horde.want : 'not rolled') + ')');
+  ok(paper && paper.hp.length && paper.hp.every(h => h === Math.round(paper.full * 0.5)), 'PAPER ENEMIES spawn with half HP (' + (paper ? paper.hp.join(',') + ' vs ' + paper.full : 'not rolled') + ')');
+
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
 `;
@@ -73,6 +102,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=20000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=90000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));

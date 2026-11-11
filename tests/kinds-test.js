@@ -17,11 +17,12 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
 
 (async () => {
   localStorage.clear(); sessionStorage.clear();
+  // Each level starts with no random event, so the numbers checked here never change.
   const setup = async (level, extra = {}) => {
     put({ ...base, level, lives: 3, hp: 170, ...extra });
     await go('game.html');
     const w = f.contentWindow;
-    w.eval("npcs.length = 0; platforms.length = 0; bullets.length = 0; lasers.length = 0; enemyShots.length = 0; player.maxHp = 1000; player.hp = 1000; player.x = 1500; player.y = GROUND_Y - PLAYER_H; player.vx = 0; camX = player.x - BASE_W / 2; gameState = 'playing';");
+    w.eval("applyLevelEvent(null); npcs.length = 0; platforms.length = 0; bullets.length = 0; lasers.length = 0; enemyShots.length = 0; player.maxHp = 1000; player.hp = 1000; player.x = 1500; player.y = GROUND_Y - PLAYER_H; player.vx = 0; camX = player.x - BASE_W / 2; gameState = 'playing';");
     return w;
   };
   const step = (w, n) => { for (let i = 0; i < n; i++) w.eval('frameCount++; updateNPCs(); updateEnemyShots();'); };

@@ -212,16 +212,24 @@ const levelEvent = {
 let eventBannerTimer = 0;
 const EVENT_BANNER_FRAMES = 220; // ~3.6s
 
+const LEVEL_EVENT_DEFAULTS = { ...levelEvent };
+
 function pickLevelEvent() {
   // No event on tutorial levels (1-2) or boss levels
   if (campaign.level <= 2 || campaign.level % 10 === 0) return;
-  const ev = LEVEL_EVENTS[Math.floor(Math.random() * LEVEL_EVENTS.length)];
+  applyLevelEvent(LEVEL_EVENTS[Math.floor(Math.random() * LEVEL_EVENTS.length)]);
+  eventBannerTimer = EVENT_BANNER_FRAMES;
+}
+
+// Make ev the active event (starting from no event, so effects never stack).
+function applyLevelEvent(ev) {
+  Object.assign(levelEvent, LEVEL_EVENT_DEFAULTS);
+  if (!ev) return;
   levelEvent.id    = ev.id;
   levelEvent.label = ev.label;
   levelEvent.desc  = ev.desc;
   levelEvent.color = ev.color;
   ev.apply();
-  eventBannerTimer = EVENT_BANNER_FRAMES;
 }
 
 function drawEventBanner() {
@@ -945,6 +953,8 @@ function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank =
   };
 }
 
+// Pick a random level event first: Horde and Paper Enemies change the spawns.
+pickLevelEvent();
 spawnNPCs();
 
 // ═══════════════════════════════════════════════════════════════
@@ -2867,8 +2877,6 @@ function generatePowerups() {
 // call now
 generatePowerups();
 
-// Pick a random level event and apply its effects
-pickLevelEvent();
 
 // ═══════════════════════════════════════════════════════════════
 //  MID-LEVEL SAVE / RESUME
@@ -2902,6 +2910,7 @@ function saveLevelProgress() {
   campaign.levelState = {
     level: campaign.level, savedAt: Date.now(), camX, player: p,
     npcs: npcs.map(n => ({ ...n })), platforms, lasers, powerups, stats: levelStats,
+    eventId: levelEvent.id,
   };
   campaign.hp = Math.ceil(player.hp);
   campaign.maxHp = player.maxHp;
@@ -2927,6 +2936,12 @@ function restoreLevelState() {
   npcs.length = 0;      npcs.push(...s.npcs.map(n => ({ ...n, nextDodgeRoll: 0 })));
   Object.assign(player, s.player);
   player.vx = 0;
+  // Keep the level's event (it was re-rolled when the page loaded). Old saves don't
+  // have one, so they keep the new roll.
+  if (s.eventId) {
+    applyLevelEvent(LEVEL_EVENTS.find(e => e.id === s.eventId));
+    eventBannerTimer = 0;   // already seen when the level started
+  }
   // Older saves have no level clock: that level can't earn speed/no-damage achievements.
   // (Big finite numbers, not Infinity, which JSON would save as null.)
   Object.assign(levelStats, s.stats || { timeMs: 1e12, damage: 1e12 });
