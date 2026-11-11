@@ -39,7 +39,7 @@ function instrument(W) {
     return ft.apply(this, arguments);
   };
   P.fillRect = function (x, y, w, h) {
-    if (W.__rec && this.canvas.id === 'game-canvas' && this.globalAlpha > 0.05 && (Math.abs(w) <= 4 || Math.abs(h) <= 4) && Math.abs(w) * Math.abs(h) > 0)
+    if (W.__rec && this.canvas.id === 'game-canvas' && this.globalAlpha > 0.05 && (Math.abs(w) <= 8 || Math.abs(h) <= 8) && Math.abs(w) * Math.abs(h) > 0)
       W.__rec.push({ kind: 'line', x: Math.min(x, x + w), y: Math.min(y, y + h), w: Math.abs(w), h: Math.abs(h), fn: W.__fn });
     return fr.apply(this, arguments);
   };

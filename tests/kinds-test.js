@@ -120,6 +120,18 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   E(w, "npcs.length = 0; for (const k of ['normal', 'runner', 'spitter', 'bomber', 'shielder', 'medic']) npcs.push(makeNPC(1500 + npcs.length * 30, false, null, null, false, k)); npcs.push(makeNPC(1700, false, null, null, true)); npcs.push(makeNPC(1750, true)); npcs.forEach(n => { n.windup = 5; n.fuse = n.kind === 'bomber' ? 5 : 0; n.healPulse = 10; n.touching = true; }); drawNPCs();");
   ok(true, 'every enemy type (and tank, boss) draws in game, mid-attack, without errors');
 
+  // Level zones: 1-20 ice cave, 21-40 grassy field, 41-60 lava dungeon, 61-80 sky, 81+ space
+  const zoneOf = {};
+  for (const lvl of [1, 20, 21, 40, 41, 60, 61, 80, 81, 100, 130]) { w = await setup(lvl); zoneOf[lvl] = E(w, 'THEME.id'); E(w, 'for (let i = 0; i < 3; i++) { frameCount++; drawWorld(); }'); }
+  ok(zoneOf[1] === 'ice' && zoneOf[20] === 'ice' && zoneOf[21] === 'grass' && zoneOf[40] === 'grass' && zoneOf[41] === 'lava' && zoneOf[60] === 'lava' &&
+     zoneOf[61] === 'sky' && zoneOf[80] === 'sky' && zoneOf[81] === 'space' && zoneOf[100] === 'space' && zoneOf[130] === 'space', 'level zones: ' + JSON.stringify(zoneOf));
+  ok(true, 'every zone draws its background, platforms and floor without errors');
+  const layout = async lvl => { w = await setup(lvl); return E(w, "JSON.stringify((THEME.rocks || THEME.clouds || THEME.pillars || THEME.puffs || THEME.planets).slice(0, 4).map(o => Math.round(o.x)))"); };
+  const a3 = await layout(3), a3b = await layout(3), a4 = await layout(4);
+  ok(a3 === a3b && a3 !== a4, 'each level has its own background layout (same level = same layout): ' + a3 + ' vs ' + a4);
+  w = await setup(25);
+  ok(E(w, 'THEME.bright') === true, 'bright zones get dark panels behind the HUD');
+
   // Enemies get much tougher with the level (level 50 vs level 10)
   const stat = async lvl => { w = await setup(lvl); return JSON.parse(E(w, "(() => { const n = makeNPC(1600), t = makeNPC(1600, false, null, null, true), b = makeNPC(1600, true); return JSON.stringify({ hp: n.maxHp, dmg: n.contactDamage, tank: t.maxHp, bossHp: b.maxHp, bossDmg: b.contactDamage, shot: Math.max(3, player.maxHp * 0.07) * ENEMY_DMG_MULT }); })()")); };
   const L1 = await stat(1), L10 = await stat(10), L50 = await stat(50), L100 = await stat(100);

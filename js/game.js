@@ -2467,49 +2467,18 @@ function drawSkull(wx, y) {
 // ═══════════════════════════════════════════════════════════════
 //  DRAW BACKGROUND + GROUND
 // ═══════════════════════════════════════════════════════════════
+// Zone for this level (js/themes.js): 1-20 ice cave, 21-40 grassy field, 41-60 lava
+// dungeon, 61-80 sky, 81+ space. Each level gets its own layout from its seed.
+const THEME = window.RielThemes.setup(campaign.level, { W: BASE_W, H: BASE_H, groundY: GROUND_Y, floorH: FLOOR_H, levelWidth: LEVEL_WIDTH });
+
 function drawWorld() {
-  // Sky
-  ctx.fillStyle = '#0a0e1a';
-  ctx.fillRect(0, 0, BASE_W, BASE_H);
-
-  // Pixel grid (parallax slow)
-  ctx.fillStyle = 'rgba(245,196,0,0.04)';
-  const gridSize = 32;
-  const offX = (-camX * 0.3) % gridSize;
-  for (let x = offX % gridSize; x < BASE_W; x += gridSize) ctx.fillRect(x, 0, 1, GROUND_Y);
-  for (let y = 0; y < GROUND_Y; y += gridSize) ctx.fillRect(0, y, BASE_W, 1);
-
-  // Far background pillars (parallax)
-  ctx.fillStyle = 'rgba(20,26,50,0.9)';
-  const pillarOff = (-camX * 0.2) % 120;
-  for (let x = pillarOff % 120; x < BASE_W; x += 120) {
-    ctx.fillRect(x, 0, 12, GROUND_Y);
-  }
-
-  // Platforms
+  THEME.background(ctx, camX, frameCount);
   for (const p of platforms) {
     const sx = wp(p.x);
-    if (sx > BASE_W || sx + p.w < 0) continue;
-    ctx.fillStyle = '#1a2244';
-    ctx.fillRect(sx, p.y, p.w, p.h);
-    ctx.fillStyle = '#f5c400';
-    ctx.fillRect(sx, p.y, p.w, 2);
-    // pixel tile detail
-    ctx.fillStyle = 'rgba(245,196,0,0.15)';
-    for (let tx = sx; tx < sx + p.w; tx += 16) ctx.fillRect(tx, p.y + 2, 8, p.h - 2);
+    if (sx > BASE_W + 20 || sx + p.w < -20) continue;
+    THEME.platform(ctx, p, sx, frameCount);
   }
-
-  // Ground
-  ctx.fillStyle = '#1a1e30';
-  ctx.fillRect(0, GROUND_Y, BASE_W, FLOOR_H);
-  ctx.fillStyle = '#f5c400';
-  ctx.fillRect(0, GROUND_Y, BASE_W, 3);
-  ctx.fillStyle = '#b8920a';
-  ctx.fillRect(0, GROUND_Y + 3, BASE_W, 3);
-  // Ground tile detail
-  ctx.fillStyle = 'rgba(245,196,0,0.07)';
-  const tOff = (-camX) % 32;
-  for (let x = tOff % 32; x < BASE_W; x += 32) ctx.fillRect(x, GROUND_Y + 6, 16, FLOOR_H - 6);
+  THEME.ground(ctx, camX, frameCount);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2752,8 +2721,17 @@ function drawToast() {
 // ═══════════════════════════════════════════════════════════════
 //  HUD
 // ═══════════════════════════════════════════════════════════════
+const powerupRow = () => player.jumpPowerTimer > 0 || player.speedPowerTimer > 0;   // HUD row for jump / speed boosts
 function drawHUD() {
   if (gameState !== 'playing') return;
+
+  // Bright zones (grassy field, sky): dark panels behind the HUD so the text stays readable
+  if (THEME.bright) {
+    const slots = ABILITY_SLOTS.filter(sl => sl.def).length;
+    ctx.fillStyle = 'rgba(10,14,26,0.78)';
+    ctx.fillRect(4, 4, player.overHp > 0 ? 300 : 196, 80 + (powerupRow() ? 12 : 0) + slots * 24);
+    ctx.fillRect(BASE_W - 168, PAUSE_BTN.y + PAUSE_BTN.h + 2, 164, 112);
+  }
 
   // HP bar
   const barX = 10, barY = 10, barW = 180, barH = 14;
@@ -2798,17 +2776,17 @@ function drawHUD() {
     }
   }
 
-  // Powerup indicators
+  // Power-up indicators: their own row under the dash label (they used to sit on the dash bar)
   ctx.font = '6px "Public Pixel", monospace';
   if (player.jumpPowerTimer > 0) {
     const secs = Math.ceil(player.jumpPowerTimer / 60);
     ctx.fillStyle = '#f5c400';
-    ctx.fillText('JUMP x' + (player.jumpMult || 1) + ' ' + secs + 's', barX, barY + 60);
+    ctx.fillText('JUMP x' + (player.jumpMult || 1) + ' ' + secs + 's', barX, barY + 80);
   }
   if (player.speedPowerTimer > 0) {
     const secs = Math.ceil(player.speedPowerTimer / 60);
     ctx.fillStyle = '#f5c400';
-    ctx.fillText('SPD x' + (player.speedMult || 1) + ' ' + secs + 's', barX + 86, barY + 60);
+    ctx.fillText('SPD x' + (player.speedMult || 1) + ' ' + secs + 's', barX + 86, barY + 80);
   }
 
   // Dash cooldown indicator
@@ -2821,7 +2799,7 @@ function drawHUD() {
   ctx.font = '5px "Public Pixel", monospace';
   ctx.fillStyle = dashReady ? '#2ecc71' : '#888870';
   ctx.fillText(dashReady ? 'DASH RDY' : 'DASH ' + Math.ceil(player.dashCooldown / 60) + 'S', barX, barY + 68);
-  drawAbilityHUD(barX, barY + 74);
+  drawAbilityHUD(barX, barY + 74 + (powerupRow() ? 12 : 0));   // below the power-up row when it shows
 
   // Right panel (below the pause button)
   const rightY = PAUSE_BTN.y + PAUSE_BTN.h + 14;

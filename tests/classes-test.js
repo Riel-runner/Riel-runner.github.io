@@ -50,7 +50,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   await go('game.html');
   ok(E('MAG_SIZE') === 30 && E('PLAYER_SHOOT_CD') === 9 && E('RELOAD_FRAMES') === 150, 'AK in game: 30-round mag, 9-frame fire rate, 2.5s reload');
   ok(Math.abs(E('PLAYER_SPEED_MULT') - 1.08) < 1e-9 && Math.abs(E('classDamage()') - 1.6) < 1e-9, 'AK in game: 108% speed, 1.6 damage per bullet');
-  E("applyLevelEvent(null); npcs.length = 0; const n = makeNPC(1000); npcs.push(n); window.__h = n.hp; bullets.push({ x: n.x + 3, y: n.y + 10, dx: 1, dy: 0, alive: true, hits: [] }); levelEvent.playerDmgMult = 1; updateNPCs();");
+  E("applyLevelEvent(null); npcs.length = 0; const n = makeNPC(1000); n.nextDodgeRoll = 1e9; npcs.push(n); window.__h = n.hp; bullets.push({ x: n.x + 3, y: n.y + 10, dx: 1, dy: 0, alive: true, hits: [] }); levelEvent.playerDmgMult = 1; updateNPCs();");
   ok(Math.abs((E('__h') - E('npcs[0].hp')) - 1.6) < 1e-9, 'an AK bullet deals 1.6 damage');
 
   // Sniper: tiny mag (+1 per level), fast piercing bullets
@@ -58,7 +58,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   put({ ...base, name: 'SN', level: 3, lives: 3, hp: 170, gunDamage: 2, upgrades: { ammo: 10 } });
   await go('game.html');
   ok(E('MAG_SIZE') === 15, 'sniper: 5 + 1 per Mag Size level (max 15)');
-  E("applyLevelEvent(null); npcs.length = 0; bullets.length = 0; const a = makeNPC(1000), b = makeNPC(1030); npcs.push(a, b); a.aware = b.aware = true; window.__ha = a.hp; window.__hb = b.hp; levelEvent.playerDmgMult = 1;");
+  E("applyLevelEvent(null); npcs.length = 0; bullets.length = 0; const a = makeNPC(1000), b = makeNPC(1030); npcs.push(a, b); a.aware = b.aware = true; a.nextDodgeRoll = b.nextDodgeRoll = 1e9; window.__ha = a.hp; window.__hb = b.hp; levelEvent.playerDmgMult = 1;");
   E("bullets.push({ x: 1003, y: npcs[0].y + 10, dx: 1, dy: 0, alive: true, speed: 16, pierce: true, hits: [] }); updateNPCs(); bullets[0].x = 1033; updateNPCs();");
   ok(E('npcs[0].hp < __ha') && E('npcs[1].hp < __hb'), 'sniper bullet pierces and hits both enemies');
   E("player.reloadTimer = 0; player.bullets = 5; bullets.length = 0; firePlayerBullet();");
