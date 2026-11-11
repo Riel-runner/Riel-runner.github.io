@@ -663,12 +663,16 @@ function spawnNPCs() {
     return;
   }
 
-  // Spread NPCs evenly — roughly 1 tank per 4 normal NPCs
+  // Spread NPCs evenly — roughly 1 tank per 4 normal NPCs.
+  // Once runners unlock at level 11, guarantee one in every regular (non-boss) level.
+  // Other unlocked special types continue to be selected randomly for the remaining slots.
   const zone = (LEVEL_WIDTH - 400) / NPC_COUNT;
   for (let i = 0; i < NPC_COUNT; i++) {
     const wx = 500 + i * zone + Math.random() * (zone * 0.6);
     const isTank = (i % 4 === 3); // every 4th NPC is a tank
-    npcs.push(makeNPC(wx, false, null, null, isTank, isTank ? 'normal' : pickEnemyKind(campaign.level)));
+    const kind = isTank ? 'normal'
+      : (i === 0 && campaign.level >= 11 ? 'runner' : pickEnemyKind(campaign.level));
+    npcs.push(makeNPC(wx, false, null, null, isTank, kind));
   }
 
   // First time a special type shows up in this campaign: say what it does.
