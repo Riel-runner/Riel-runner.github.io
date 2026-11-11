@@ -534,3 +534,8 @@ body::after {
 
 /* Current class (upgrade numbers are for this weapon) */
 .class-badge { font-size: 7px; color: #5dade2; letter-spacing: 0.15em; margin: -18px 0 22px; text-align: center; }
+
+/* Extra Life card: hearts instead of numbers */
+.life-card .life-preview .dmg-current,
+.life-card .life-preview .dmg-next { font-size: 12px; color: #e74c3c; letter-spacing: 0.1em; }
+.life-card .life-preview .dmg-current { color: #c0392b; }

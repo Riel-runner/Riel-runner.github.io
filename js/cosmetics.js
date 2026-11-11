@@ -96,6 +96,15 @@ window.RielCosmetics = (function () {
   const owns     = (cat, id) => load().owned[cat].includes(id);
   const equipped = cat => item(cat, load().equipped[cat]) || item(cat, DEFAULTS[cat]);
 
+  // Spend gems (e.g. reviving); returns false and changes nothing if there aren't enough.
+  function spendGems(n) {
+    const p = load();
+    if (p.gems < n) return false;
+    p.gems -= n;
+    save(p);
+    return true;
+  }
+
   function addGems(n) {
     const p = load();
     p.gems += Math.max(0, Math.floor(n));
@@ -205,5 +214,5 @@ window.RielCosmetics = (function () {
   }
 
   return { CURRENCY, CATALOG, CLASSES, CATEGORIES, drawGun, magStep, classStats, GEMS_PER_LEVEL, GEMS_PER_BOSS, load, save, item, gems, owns, equipped,
-           addGems, buy, equip, levelReward, drawPlayerSprite, spawnTrail, updateTrail, drawTrail };
+           addGems, spendGems, buy, equip, levelReward, drawPlayerSprite, spawnTrail, updateTrail, drawTrail };
 })();

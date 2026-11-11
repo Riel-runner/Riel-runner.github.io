@@ -49,7 +49,7 @@ async function until(fn, ms = 6000) { const t = Date.now(); while (Date.now() - 
   ok(await until(() => !d().getElementById('death-screen').hidden), 'death screen appears after last life');
   await wait(800);
   const ds = d().getElementById('death-screen');
-  ok(d().querySelectorAll('#death-screen a, #death-screen button').length === 1, 'death screen has exactly one button');
+  ok(d().querySelectorAll('#death-screen a').length === 1 && d().querySelectorAll('#death-screen button:not([hidden])').length === 1, 'death screen: return-to-title link plus the revive button');
   ok(/RETURN TO TITLE SCREEN/.test(ds.textContent) && d().getElementById('death-title-btn').getAttribute('href') === 'index.html', 'button returns to title (index.html)');
   ok(d().getElementById('death-campaign').textContent === 'DOOMED', 'shows campaign name');
   const txt = ds.textContent;

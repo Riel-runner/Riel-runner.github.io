@@ -550,6 +550,7 @@ function updatePlayer() {
   if (player.shootTimer > 0) player.shootTimer--;
   if (player.gunFlash   > 0) player.gunFlash--;
   if (player.hitFlash   > 0) player.hitFlash--;
+  if (player.invuln     > 0) player.invuln--;
 
   // Reloading — refill the magazine when the timer finishes
   if (player.reloadTimer > 0) {
@@ -1658,7 +1659,7 @@ function applyLevelClearRewards() {
   campaign.levelState = null; // level finished: nothing to resume (null, not delete, so saves overwrite it)
   campaign.maxHp = player.maxHp;
   campaign.hp    = player.maxHp;
-  campaign.lives = isBossLevel() ? MAX_LIVES : player.lives;
+  campaign.lives = isBossLevel() ? Math.max(MAX_LIVES, player.lives) : player.lives; // keep bought extra lives
 }
 
 function goToShop() {
@@ -1684,6 +1685,7 @@ function goToVictory() {
 // Returns the damage actually taken (after the Armor upgrade).
 function damagePlayer(amount, isTick) {
   if (player.dead) return 0;
+  if (player.invuln > 0) return 0;  // just revived: a moment of safety
   amount *= (1 - ARMOR_BLOCK) * (levelEvent.playerDamageTakenMult || 1);
   player.hp -= amount;
   player.hitFlash = 20;
@@ -1973,6 +1975,47 @@ function completeCampaign() {
 // Fill in and reveal the death screen (HTML panel in game.html).
 let deathScreenShown = false;
 function showDeathScreen() { showEndScreen(false); }
+
+// ── Revive: spend gems on the death screen to keep going ──
+// Back in the same level where you fell, with 1 life, full HP and 2s of safety.
+const REVIVE_COST = 150;
+const REVIVE_INVULN_FRAMES = 120;
+function setupReviveButton() {
+  const btn = document.getElementById('death-revive-btn');
+  const gems = window.RielCosmetics.gems();
+  btn.hidden = false;
+  btn.disabled = gems < REVIVE_COST;
+  btn.innerHTML = '&#10084; REVIVE &middot; ' + REVIVE_COST + ' GEMS' +
+    '<small>' + (gems < REVIVE_COST ? 'NOT ENOUGH GEMS (YOU HAVE ' + gems + ')' : 'YOU HAVE ' + gems + ' GEMS') + '</small>';
+  btn.onclick = reviveWithGems;
+}
+
+function reviveWithGems() {
+  if (!campaign.dead || !window.RielCosmetics.spendGems(REVIVE_COST)) return;
+  // Undo the fall
+  campaign.dead = false;
+  campaign.diedAt = null;
+  campaign.revives = (campaign.revives || 0) + 1;
+  player.lives = 1;
+  respawnPlayer();                     // full HP, back near where you fell
+  player.respawnTimer = 0;
+  player.invuln = REVIVE_INVULN_FRAMES;
+  player.hitFlash = REVIVE_INVULN_FRAMES; // blink while invulnerable
+  campaign.lives = 1;
+  campaign.hp = player.maxHp;
+  // Close the death screen and carry on
+  const screen = document.getElementById('death-screen');
+  screen.classList.remove('show');
+  screen.hidden = true;
+  document.getElementById('death-revive-btn').hidden = true;
+  deathScreenShown = false;
+  const touch = document.getElementById('touch-overlay');
+  if (touch) touch.style.display = '';
+  gameState = 'playing';
+  stateTimer = 0;
+  saveLevelProgress();                 // saves the campaign as alive again (with the level)
+  showToast('REVIVED! -' + REVIVE_COST + ' GEMS');
+}
 // Death screen, or (victory) the campaign-complete screen with its rewards.
 function showEndScreen(victory) {
   if (deathScreenShown) return;
@@ -1992,6 +2035,7 @@ function showEndScreen(victory) {
     reward.hidden = lines.length === 0;
   }
   document.getElementById('death-summary').innerHTML = window.RielRunSummary.render(campaign);
+  if (!victory) setupReviveButton();
   const touch = document.getElementById('touch-overlay');
   if (touch) touch.style.display = 'none';
   const screen = document.getElementById('death-screen');
@@ -2388,7 +2432,7 @@ function drawPauseMenu() {
     ['CAMPAIGN',  campaign.name || 'UNKNOWN'],
     ['LEVEL',     window.RielModes.stageLabel(campaign).replace(/^LEVEL /, '')],
     ['HP',        Math.ceil(player.hp) + ' / ' + player.maxHp],
-    ['LIVES',     '♥'.repeat(player.lives) + '♡'.repeat(Math.max(0, 3 - player.lives))],
+    ['LIVES',     '♥'.repeat(player.lives) + '♡'.repeat(Math.max(0, MAX_LIVES - player.lives))],
     ['RIELS',     campaign.riels + ' KHR'],
     ['GUN DMG',   (Math.round(classDamage() * 10) / 10) + (PLAYER_CLASS.pellets ? ' x' + PLAYER_CLASS.pellets : '') + ' ' + PLAYER_CLASS.weapon],
     ['UPGRADES',  campaign.upgradeCount || 0],
@@ -2483,7 +2527,7 @@ function drawHUD() {
 
   // Lives (3 hearts, grey when lost)
   ctx.font = '11px "Public Pixel", monospace';
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < Math.max(MAX_LIVES, player.lives); i++) {   // extra lives bought in the shop add hearts
     ctx.fillStyle = i < player.lives ? '#c0392b' : '#2a2e44';
     ctx.fillText('♥', barX + i * 18, barY + 30);
   }

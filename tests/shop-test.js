@@ -22,7 +22,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   await go('shop.html');
   let d = f.contentDocument, w = f.contentWindow;
   const card = k => d.querySelector('.btn-buy[data-key="' + k + '"]').closest('.upg-card');
-  ok(d.querySelectorAll('.upg-card').length === 7, '7 upgrade cards shown');
+  ok(d.querySelectorAll('.upg-card:not(.life-card)').length === 7 && d.querySelectorAll('.life-card').length === 1, '7 upgrade cards + the EXTRA LIFE card');
   ok(/LV 3 \/ 10/.test(card('damage').textContent) && card('damage').querySelector('.dmg-current').textContent === '8 DMG' && card('damage').querySelector('.dmg-next').textContent === '10 DMG', 'old save: 3 gun upgrades carried over (LV 3, 8 -> 10 DMG)');
   ok(card('damage').querySelector('.cost-amount').textContent === '16', 'damage LV3 costs 16 (6 x 1.4^3)');
   ok(card('armor').querySelector('.cost-amount').textContent === '8' && /LV 0/.test(card('armor').textContent), 'armor starts at LV 0 for 8');

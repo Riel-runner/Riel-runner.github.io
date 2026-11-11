@@ -52,6 +52,73 @@ const listEl = document.getElementById('upgrade-list');
 
 // Build one card per upgrade once; render() just updates them.
 const cards = {};
+// ── EXTRA LIFE: +1 life now, bought with KHR ──
+// Up to 2 lives above the campaign type's normal max (5 normally, 3 in Nightmare).
+// Price rises 50% with each life bought in this campaign (40, 60, 90, 135...).
+// Not an upgrade level, so it doesn't count toward the upgrade total.
+const MODE_LIVES   = window.RielModes.get(campaign).lives;
+const LIFE_CAP     = MODE_LIVES + 2;
+const lifeCost     = () => Math.round(40 * Math.pow(1.5, campaign.livesBought || 0));
+const hearts = (n, total) => '&#9829;'.repeat(n) + '&#9825;'.repeat(Math.max(0, total - n));
+const lifeCard = document.createElement('div');
+lifeCard.className = 'upg-card life-card';
+lifeCard.innerHTML = `
+  <div class="upg-head">
+    <canvas class="upg-icon" width="32" height="32"></canvas>
+    <div class="upg-title">
+      <div class="item-name">EXTRA LIFE</div>
+      <div class="upg-level"></div>
+    </div>
+  </div>
+  <div class="item-desc">GET AN EXTRA LIFE RIGHT NOW. HOLD UP TO ${LIFE_CAP} LIVES. COSTS MORE EACH TIME.</div>
+  <div class="dmg-preview life-preview">
+    <span class="dmg-current"></span>
+    <span class="dmg-arrow">&#9658;</span>
+    <span class="dmg-next"></span>
+  </div>
+  <div class="upg-foot">
+    <div class="upg-cost"><span class="cost-amount"></span> <span class="cost-unit">KHR</span></div>
+    <button class="btn-buy" data-key="life">BUY</button>
+  </div>`;
+ICONS.life = ICONS.maxhp;     // heart icon
+drawIcon(lifeCard.querySelector('.upg-icon'), 'life');
+lifeCard.querySelector('.btn-buy').addEventListener('click', buyExtraLife);
+listEl.appendChild(lifeCard);
+
+function renderLifeCard() {
+  const lives = campaign.lives, full = lives >= LIFE_CAP, cost = lifeCost();
+  const canAfford = !full && campaign.riels >= cost;
+  lifeCard.className = 'upg-card life-card ' + (full ? 'maxed' : canAfford ? 'affordable' : 'cant-afford');
+  lifeCard.querySelector('.upg-level').textContent = full ? 'MAX LIVES' : lives + ' / ' + LIFE_CAP + ' LIVES';
+  lifeCard.querySelector('.dmg-current').innerHTML = hearts(lives, MODE_LIVES);
+  lifeCard.querySelector('.dmg-arrow').hidden = full;
+  lifeCard.querySelector('.dmg-next').innerHTML = full ? '' : hearts(lives + 1, MODE_LIVES);
+  lifeCard.querySelector('.upg-cost').hidden = full;
+  lifeCard.querySelector('.cost-amount').textContent = cost;
+  const btn = lifeCard.querySelector('.btn-buy');
+  btn.disabled = !canAfford;
+  btn.classList.toggle('maxed-btn', full);
+  btn.textContent = full ? 'FULL' : 'BUY';
+}
+
+function buyExtraLife() {
+  if (campaign.lives >= LIFE_CAP) { showToast('YOU ALREADY HAVE THE MAX LIVES!'); return; }
+  const cost = lifeCost();
+  if (campaign.riels < cost) { showToast('NOT ENOUGH RIELS!'); return; }
+  campaign.riels -= cost;
+  campaign.lives += 1;
+  campaign.livesBought = (campaign.livesBought || 0) + 1;
+  const upgradeSound = new Audio('assets/audio/sfx/upgrade.ogg');
+  upgradeSound.volume = 0.55 * window.RielVolume.sfx();
+  upgradeSound.play().catch(() => {});
+  const flash = document.getElementById('purchase-flash');
+  flash.classList.add('show');
+  setTimeout(() => flash.classList.remove('show'), 300);
+  saveCampaign();
+  render();
+  showToast('EXTRA LIFE! NOW ' + campaign.lives + ' LIVES');
+}
+
 UPG.LIST.forEach(u => {
   const card = document.createElement('div');
   card.className = 'upg-card';
@@ -90,8 +157,8 @@ function render() {
   document.getElementById('riels-display').textContent = campaign.riels;
   document.getElementById('hp-display').textContent = campaign.hp + ' / ' + campaign.maxHp;
   // Lives only refill after boss levels now, so show lost ones as empty hearts.
-  const lives = Math.max(0, Math.min(3, campaign.lives));
-  document.getElementById('lives-display').innerHTML = '&#9829;'.repeat(lives) + '&#9825;'.repeat(3 - lives);
+  document.getElementById('lives-display').innerHTML = hearts(Math.max(0, campaign.lives), MODE_LIVES);
+  renderLifeCard();
   const totalLevels = UPG.LIST.reduce((sum, u) => sum + UPG.level(campaign, u.key), 0);
   document.getElementById('upgrades-display').textContent = totalLevels + ' / ' + UPG.LIST.length * UPG.MAX_LEVEL;
 
