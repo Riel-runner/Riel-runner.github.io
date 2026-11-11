@@ -79,7 +79,9 @@ function addStat(name, amount = 1) {
 // ── Achievements (js/achievements.js) ──
 // This level's numbers for the speed / no-damage / accuracy achievements. Saved with
 // the level so a resumed level keeps its clock.
-const levelStats = { timeMs: 0, damage: 0, shots0: campaign.shotsFired || 0, hits0: campaign.shotsHit || 0 };
+// abilityDmg / plainDmg: damage dealt by an ability or while one is active, vs every other hit
+// (ABILITY MASTER achievement: clear a level with only the first kind).
+const levelStats = { timeMs: 0, damage: 0, shots0: campaign.shotsFired || 0, hits0: campaign.shotsHit || 0, abilityDmg: 0, plainDmg: 0 };
 const ACH = window.RielAchievements;
 const achToasts = [];        // unlocked mid-level, shown one at a time (see drawToast)
 let clearAchievements = [];  // unlocked by clearing this level, listed on the banner
@@ -97,6 +99,7 @@ function reportLevelClear() {
   clearAchievements = achToasts.splice(0).concat(ACH.levelCleared({
     level: campaign.level, boss: isBossLevel(), timeMs: levelStats.timeMs,
     damage: levelStats.damage, shots, hits,
+    abilityOnly: levelStats.abilityDmg > 0 && levelStats.plainDmg <= 0,
   }).map(achText));
   if (MODE.id === 'endless') clearAchievements.push(...ACH.max('bestWave', campaign.level).map(achText));
   persistCampaign();
@@ -1804,7 +1807,7 @@ function useAbility(slotIdx = 0) {
       for (const n of aliveNPCs()) {
         const dx = centerX(n) - cx, dy = (n.y + n.h / 2) - cy;
         if (Math.hypot(dx, dy) > s.radius) continue;
-        hitNPC(n, classDamage() * s.dmg, def.color);
+        hitNPC(n, classDamage() * s.dmg, def.color, true);
         if (n.dead) continue;
         n.vx = (Math.sign(dx) || 1) * (n.isBoss ? 2 : 5);   // knocked back
         n.vy = n.isBoss ? -2 : -4;
@@ -1826,7 +1829,7 @@ function useAbility(slotIdx = 0) {
       for (const n of targets) {
         const to = { x: centerX(n), y: n.y + n.h / 2 };
         abilityFx.push({ type: 'bolt', x1: from.x, y1: from.y, x2: to.x, y2: to.y, color: def.color, life: 16, max: 16 });
-        hitNPC(n, classDamage() * s.dmg, def.color);
+        hitNPC(n, classDamage() * s.dmg, def.color, true);
         if (n.dead && awakened) player[slot.cdKey] = Math.max(0, player[slot.cdKey] - 4 * 60); // Overload trait
         from = to;
       }
@@ -1851,10 +1854,16 @@ function updateAbilityTimers() {
 
 // Every hit the player lands goes through here (bullets and abilities), so damage
 // traits and Life Leech apply to all of it.
-function hitNPC(n, dmg, color = '#f5c400') {
+// fromAbility: the hit is the ability itself (Shockwave, Chain Lightning).
+function hitNPC(n, dmg, color = '#f5c400', fromAbility = false) {
   if (n.dead) return;
   if (abilityOn('shield') && abilityAwake('shield')) dmg *= AWAKEN_DMG_MULT;    // Power Surge
   if (n.frozen > 0 && abilityAwake('freeze')) dmg *= AWAKEN_DMG_MULT;           // Shatter
+  // ABILITY MASTER: counts as ability damage if an ability did it or one is in action right now:
+  // a timed one running (Shield, Leech...), the target frozen / stunned, or Med Kit's Recovery regen.
+  const withAbility = fromAbility || n.frozen > 0 || n.stun > 0 || player.regenTime > 0 ||
+    ABILITY_SLOTS.some(sl => sl.def && player[sl.timeKey] > 0);
+  levelStats[withAbility ? 'abilityDmg' : 'plainDmg'] += Math.min(dmg, Math.max(0, n.hp));
   n.hp -= dmg;
   spawnDmgNumber(n.x, n.y - 4, dmg, color);
   if (abilityOn('leech')) leechHeal(dmg * abilitySlot('leech').s.pct / 100);
@@ -2630,12 +2639,15 @@ function togglePause() {
 }
 
 // Which pause menu item (if any) is at canvas point (x, y)? Mirrors drawPauseMenu's layout.
+// Menu item rows in the pause panel (shared by drawing and tap/click hit-testing).
+// Below the stats block (5 rows), so nothing overlaps the divider between them.
+const PAUSE_ITEM_Y0 = 200, PAUSE_ITEM_GAP = 34;
 function pauseItemAt(x, y) {
   const panelW = 380, panelH = 320;
   const panelX = BASE_W / 2 - panelW / 2;
   const panelY = BASE_H / 2 - panelH / 2;
   for (let i = 0; i < PAUSE_ITEMS.length; i++) {
-    const itemY = panelY + 188 + i * 38;
+    const itemY = panelY + PAUSE_ITEM_Y0 + i * PAUSE_ITEM_GAP;
     if (x >= panelX + 16 && x <= panelX + panelW - 16 && y >= itemY - 14 && y <= itemY + 10) return i;
   }
   return -1;
@@ -2746,11 +2758,11 @@ function drawPauseMenu() {
 
   // Divider
   ctx.fillStyle = 'rgba(245,196,0,0.2)';
-  ctx.fillRect(panelX + 20, panelY + 162, panelW - 40, 2);
+  ctx.fillRect(panelX + 20, panelY + 176, panelW - 40, 2);   // under the last stats row (EVENT)
 
   // Menu items
   PAUSE_ITEMS.forEach((item, i) => {
-    const itemY = panelY + 188 + i * 38;
+    const itemY = panelY + PAUSE_ITEM_Y0 + i * PAUSE_ITEM_GAP;
     const selected = i === pauseMenuIndex;
 
     if (selected) {
@@ -3217,7 +3229,8 @@ function restoreLevelState() {
   }
   // Older saves have no level clock: that level can't earn speed/no-damage achievements.
   // (Big finite numbers, not Infinity, which JSON would save as null.)
-  Object.assign(levelStats, s.stats || { timeMs: 1e12, damage: 1e12 });
+  Object.assign(levelStats, s.stats || { timeMs: 1e12, damage: 1e12, plainDmg: 1e12 });
+  if (levelStats.plainDmg == null) levelStats.plainDmg = 1e12;   // saved before ABILITY MASTER existed
   // Upgrades bought in the shop (from the title screen) since this save win over
   // the saved values; a Max HP upgrade also adds that HP now.
   const hpGain = (campaign.maxHp || 0) - (s.player.maxHp || 0);

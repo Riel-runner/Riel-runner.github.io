@@ -34,7 +34,7 @@ function setTouch(on) {
   ok(w.eval('gameState') === 'paused', 'Escape pauses');
   const cv = d.getElementById('game-canvas'), r = cv.getBoundingClientRect();
   const toClient = (x, y) => [r.left + x * r.width / w.eval('BASE_W'), r.top + y * r.height / w.eval('BASE_H')];
-  const [rx, ry] = toClient(w.eval('BASE_W') / 2, w.eval('BASE_H') / 2 - 160 + 188 + 38 * 0);  // RESUME row
+  const [rx, ry] = toClient(w.eval('BASE_W') / 2, w.eval('BASE_H') / 2 - 160 + w.eval('PAUSE_ITEM_Y0'));  // RESUME row
   ptr(cv, 'pointermove', rx, ry + 38 * r.height / w.eval('BASE_H'));
   ok(w.eval('pauseMenuIndex') === 1, 'mouse hover highlights pause menu item');
   ptr(cv, 'pointerdown', rx, ry);

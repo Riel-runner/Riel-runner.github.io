@@ -34,6 +34,7 @@ To run one suite: `node tests/<name>-test.js . "<path to chrome.exe>"` from the 
 | `kinds` | Runner, spitter, bomber, shielder and medic abilities |
 | `achievements` | Menu button and NEW badge, achievements page, gems paid once, credit for old saves, in-game unlocks (levels, speed, no damage, accuracy, kills, bosses, campaign types, Endless) |
 | `abilities` | Ability wheel in the gem shop (odds, gems, copies), upgrade / awaken / equip, every ability in game (E key, cooldowns, traits, Life Leech overcharge), touch button |
+| `layout` | Nothing overlaps: HUD / overlay / pause text and lines in every campaign type, touch buttons over HUD text (big and phone screens), and every page at desktop and phone width |
 
 `tools/shot.js` and `tools/enemy-shot.js` take screenshots and don't run any checks.
 

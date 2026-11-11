@@ -85,12 +85,13 @@ body {
   border-color: rgba(231,76,60,0.95);
 }
 
-/* Top right — dash (pause is drawn on the game canvas) */
+/* Right side, above SHOOT — dash. (It used to sit top-right, over the level / riels
+   text drawn on the canvas; the pause button is drawn on the canvas too.) */
 #btn-dash {
-  right: 90px;
-  top: 14px;
-  width: 60px;
-  height: 44px;
+  right: 34px;
+  bottom: 222px;
+  width: 90px;
+  height: 40px;
   font-size: 7px;
   letter-spacing: 0.05em;
   border-color: rgba(34,85,204,0.5);
@@ -241,3 +242,15 @@ body {
 }
 #btn-ability2[hidden] { display: none; }
 #btn-ability2.cooldown { opacity: 0.4; font-size: 8px; }
+
+/* Short screens (phones held sideways): smaller buttons kept low, so none of them
+   cover the HUD text drawn at the top of the game (HP, ammo, abilities, level). */
+@media (max-height: 450px) {
+  #btn-left     { left: 12px;  bottom: 16px; width: 60px; height: 60px; font-size: 15px; }
+  #btn-right    { left: 82px;  bottom: 16px; width: 60px; height: 60px; font-size: 15px; }
+  #btn-jump     { left: 12px;  bottom: 86px; width: 60px; height: 60px; font-size: 15px; }
+  #btn-shoot    { right: 16px; bottom: 16px; width: 88px; height: 88px; font-size: 9px; }
+  #btn-dash     { right: 16px; bottom: 114px; width: 88px; height: 34px; }
+  #btn-ability  { right: 114px; bottom: 22px; width: 52px; height: 52px; font-size: 11px; }
+  #btn-ability2 { right: 118px; bottom: 84px; width: 44px; height: 44px; font-size: 10px; }
+}
