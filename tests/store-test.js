@@ -127,6 +127,10 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   setProfile({ gems: 40 });
   await go('store.html');
   ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'real saves still load normally');
+  f.contentDocument.getElementById('gem-count').textContent = 99999999999999999999999999999999999999;
+  await wait(50);
+  ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'console: typing a huge number into the gem counter snaps back to the real 40');
+  ok(f.contentWindow.RielCosmetics.buy('class', 'sniper').ok === false && f.contentWindow.RielAbilities.roll().ok === false && profile().gems === 40, 'console: after that trick, buying and spinning still use the real 40 gems (refused)');
   // The console can't give gems, tokens or achievements, or write a save
   const Wc = f.contentWindow;
   ok(Wc.RielCosmetics.save === undefined && Wc.RielCosmetics.addGems === undefined, 'console: no save() / addGems() to call');
@@ -134,6 +138,10 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   await go('index.html');
   ok(f.contentWindow.RielModes.addToken === undefined && f.contentWindow.RielModes.withKey(null) === null, 'console: cannot give Riel Tokens');
   ok(f.contentWindow.RielAchievements.unlock === undefined && f.contentWindow.RielAchievements.withKey(undefined) === null, 'console: cannot unlock achievements for their gems');
+  f.contentDocument.getElementById('gem-count').textContent = '1e+38';
+  f.contentDocument.getElementById('token-count').textContent = '999';
+  await wait(50);
+  ok(f.contentDocument.getElementById('token-count').textContent === String(f.contentWindow.RielModes.tokens()), 'console: editing the token counter on the title screen snaps back');
   ok(f.contentDocument.getElementById('gem-count').textContent === '40', 'gems unchanged by all of that (40)');
 
   document.getElementById('out').textContent = log.join('\n');

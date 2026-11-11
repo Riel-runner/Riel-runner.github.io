@@ -156,7 +156,7 @@ function render() {
   document.getElementById('level-display').textContent = campaign.level;
   document.getElementById('riels-display').textContent = campaign.riels;
   // Gems can't be spent here (they're for the main menu shop), just shown
-  document.getElementById('gems-display').textContent = window.RielCosmetics.gems().toLocaleString('en-US');
+  window.RielCosmetics.pinGems(document.getElementById('gems-display'));
   document.getElementById('hp-display').textContent = campaign.hp + ' / ' + campaign.maxHp;
   // Lives only refill after boss levels now, so show lost ones as empty hearts.
   document.getElementById('lives-display').innerHTML = hearts(Math.max(0, campaign.lives), MODE_LIVES);

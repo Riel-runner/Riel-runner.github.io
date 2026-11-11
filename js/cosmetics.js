@@ -283,6 +283,20 @@ window.RielCosmetics = (function () {
     ctx.globalAlpha = 1;
   }
 
-  return { CURRENCY, CATALOG, CLASSES, CATEGORIES, drawGun, magStep, classStats, GEMS_PER_LEVEL, GEMS_PER_BOSS, load, claim, withKey, takeTamperNotice, legacyOpen: () => Date.now() < LEGACY_UNTIL, item, gems, owns, equipped,
+  // Keep a number on the page showing the real saved value. Typing
+  // el.textContent = 999... in the console only changed the text (purchases
+  // always check the saved profile), but it looked like it worked, so any edit
+  // snaps straight back.
+  function pinText(el, read) {
+    if (!el || el._rielPinned) return;
+    el._rielPinned = true;
+    const fix = () => { const real = String(read()); if (el.textContent !== real) el.textContent = real; };
+    fix();
+    new MutationObserver(fix).observe(el, { childList: true, characterData: true, subtree: true });
+  }
+  const pinGems = el => pinText(el, () => gems().toLocaleString('en-US'));
+
+
+  return { CURRENCY, CATALOG, CLASSES, CATEGORIES, drawGun, magStep, classStats, GEMS_PER_LEVEL, GEMS_PER_BOSS, load, claim, withKey, takeTamperNotice, pinText, pinGems, legacyOpen: () => Date.now() < LEGACY_UNTIL, item, gems, owns, equipped,
            spendGems, buy, equip, levelReward, drawPlayerSprite, spawnTrail, updateTrail, drawTrail };
 })();

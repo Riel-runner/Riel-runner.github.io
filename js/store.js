@@ -7,6 +7,7 @@ let tab = 'class';
 try { const t = localStorage.getItem(TAB_KEY); if (C.CATEGORIES.includes(t) || t === 'ability') tab = t; } catch {}
 
 const grid = document.getElementById('store-grid');
+C.pinGems(document.getElementById('gem-count'));
 let previews = [];   // { canvas, cat, item, particles } — redrawn every frame
 
 const GEM_SVG = '<svg class="gem-icon small" viewBox="0 0 8 8" aria-hidden="true" shape-rendering="crispEdges">' +
