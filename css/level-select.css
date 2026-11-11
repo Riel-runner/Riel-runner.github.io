@@ -515,3 +515,6 @@ body::after {
 .slot-card.completed .slot-fallen-tag { color: #f5c400; border-color: #f5c400; }
 .modal-details.completed { border-color: #f5c400; box-shadow: 6px 6px #b8920a, 10px 10px #3d2b1f; }
 .modal-details.completed .details-title { color: #f5c400; }
+
+/* Leave room under the type badge on playable cards */
+.slot-card:not(.fallen) .slot-mode + div { margin-top: 18px; }
