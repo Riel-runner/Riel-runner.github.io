@@ -109,8 +109,8 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   // in every walk step, and the walk cycle only runs while moving
   w = await setup(45);
   const spr = JSON.parse(E(w, "(() => { const P = CanvasRenderingContext2D.prototype, fr = P.fillRect; let box = null, n = 0; P.fillRect = function (x, y, ww, hh) { if (box) { n++; box.x0 = Math.min(box.x0, x); box.y0 = Math.min(box.y0, y); box.x1 = Math.max(box.x1, x + ww); box.y1 = Math.max(box.y1, y + hh); } return fr.apply(this, arguments); }; const out = {}; for (const k of Object.keys(RielEnemySprite.LOOKS)) for (let st = 0; st < 4; st++) { box = { x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 }; n = 0; RielEnemySprite.draw(ctx, 100, 100, 18, 24, { kind: k, step: st, facing: 1 }); out[k + st] = { n, x0: box.x0 - 100, y0: box.y0 - 100, x1: box.x1 - 118, y1: box.y1 - 124 }; } box = null; P.fillRect = fr; return JSON.stringify(out); })()"));
-  const bad = Object.entries(spr).filter(([, b]) => b.n < 20 || b.x0 < -4 || b.x1 > 4 || b.y0 < -6 || b.y1 > 0.01);
-  ok(bad.length === 0, 'enemy sprite: all 8 looks x 4 walk steps draw inside their box, feet on the ground (' + (bad.map(b => b[0]).join(', ') || 'all fine') + ')');
+  const bad = Object.entries(spr).filter(([, b]) => b.n < 20 || b.x0 < -4 || b.x1 > 4 || b.y0 < -6 || b.y1 > 0.5 /* edges snap to screen pixels: up to half a game unit */);
+  ok(bad.length === 0, 'enemy sprite: all 8 looks x 4 walk steps draw inside their box, feet on the ground (' + (bad.map(b => b[0] + JSON.stringify(b[1])).slice(0, 3).join(', ') || 'all fine') + ')');
   E(w, "npcs.length = 0; const m = makeNPC(1600); m.lastDrawX = m.x; npcs.push(m); gameState = 'playing';");
   const steps = new Set();
   for (let i = 0; i < 40; i++) { E(w, 'npcs[0].x += 2; drawNPCs();'); steps.add(E(w, 'npcs[0].walkStepNow')); }
@@ -119,6 +119,12 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   ok(E(w, 'npcs[0].walkStepNow') === 0, 'standing still: both feet down');
   E(w, "npcs.length = 0; for (const k of ['normal', 'runner', 'spitter', 'bomber', 'shielder', 'medic']) npcs.push(makeNPC(1500 + npcs.length * 30, false, null, null, false, k)); npcs.push(makeNPC(1700, false, null, null, true)); npcs.push(makeNPC(1750, true)); npcs.forEach(n => { n.windup = 5; n.fuse = n.kind === 'bomber' ? 5 : 0; n.healPulse = 10; n.touching = true; }); drawNPCs();");
   ok(true, 'every enemy type (and tank, boss) draws in game, mid-attack, without errors');
+
+  // A defeated enemy's skull floats up and fades until it's gone
+  E(w, "npcs.length = 0; const d = makeNPC(1600); d.dead = true; npcs.push(d); window.__sk = []; const orig = drawSkull; window.drawSkull = (x, y, a) => { __sk.push([y, a]); orig(x, y, a); };");
+  const sk = [0, 30, 60, 90, 119, 125].map(t => { E(w, '__sk = []; npcs[0].deadTimer = ' + t + '; drawNPCs();'); return E(w, 'JSON.stringify(__sk[0] || null)'); }).map(JSON.parse);
+  ok(sk.slice(0, 5).every((s, i) => s && (i === 0 || (s[0] < sk[i - 1][0] && s[1] < sk[i - 1][1]))) && sk[0][1] === 1 && sk[4][1] < 0.05 && sk[5] === null,
+    'enemy skull rises and fades out, then disappears (' + sk.map(s => s ? Math.round(s[0]) + '/' + s[1].toFixed(2) : 'gone').join(' ') + ')');
 
   // Level zones: 1-20 ice cave, 21-40 grassy field, 41-60 lava dungeon, 61-80 sky, 81+ space
   const zoneOf = {};
@@ -157,6 +163,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=20000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=90000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));

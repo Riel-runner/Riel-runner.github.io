@@ -12,7 +12,9 @@ body {
 
 #game-canvas {
   display: block;
-  image-rendering: pixelated;
+  /* The canvas has at least as many pixels as the screen shows (see resizeCanvas),
+     so the browser only scales it down a little: smooth scaling keeps text crisp. */
+  image-rendering: auto;
   cursor: crosshair;
 }
 
@@ -22,7 +24,7 @@ body {
   inset: 0;
   background: repeating-linear-gradient(
     0deg, transparent, transparent 2px,
-    rgba(0,0,0,0.10) 2px, rgba(0,0,0,0.10) 4px
+    rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px   /* faint, so it doesn't cut through small HUD text */
   );
   pointer-events: none;
   z-index: 10;

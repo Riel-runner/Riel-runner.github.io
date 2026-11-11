@@ -26,6 +26,8 @@ window.RielAchievements = (function () {
     { id: 'kills_5000', cat: 'COMBAT', name: 'UNSTOPPABLE',     desc: 'DEFEAT 5,000 ENEMIES',            gems: 500,  stat: 'kills', goal: 5000 },
     { id: 'no_damage',  cat: 'COMBAT', name: 'UNTOUCHABLE',     desc: 'CLEAR LEVEL 5 OR HIGHER WITHOUT TAKING DAMAGE', gems: 150 },
     { id: 'sharpshooter', cat: 'COMBAT', name: 'SHARPSHOOTER',  desc: 'CLEAR A LEVEL WITH 90% ACCURACY (20+ SHOTS)',  gems: 150 },
+    { id: 'clean_5',  cat: 'COMBAT', name: 'CLEAN STREAK', desc: 'CLEAR 5 LEVELS IN A ROW (AFTER LEVEL 10) WITHOUT TAKING ANY DAMAGE',  gems: 200 },
+    { id: 'clean_10', cat: 'COMBAT', name: 'SPOTLESS',     desc: 'CLEAR 10 LEVELS IN A ROW (AFTER LEVEL 10) WITHOUT TAKING ANY DAMAGE', gems: 500 },
     { id: 'ability_only', cat: 'COMBAT', name: 'ABILITY MASTER', desc: 'CLEAR LEVEL 5 OR HIGHER ONLY DEALING DAMAGE WITH ABILITIES OR WHILE ONE IS IN ACTION', gems: 1000 },
     // Speed
     { id: 'fast_30',    cat: 'SPEED',  name: 'SPEEDY',          desc: 'CLEAR A LEVEL IN UNDER 30 SECONDS', gems: 100 },
@@ -120,6 +122,8 @@ window.RielAchievements = (function () {
     if (info.level >= 5 && info.damage <= 0) ids.push('no_damage');
     if (info.shots >= 20 && info.hits / info.shots >= 0.9) ids.push('sharpshooter');
     if (info.level >= 5 && info.abilityOnly) ids.push('ability_only');
+    if (info.cleanStreak >= 5) ids.push('clean_5');
+    if (info.cleanStreak >= 10) ids.push('clean_10');
     return update(p => { p.life.levelsCleared = (p.life.levelsCleared || 0) + 1; return ids; });
   }
 

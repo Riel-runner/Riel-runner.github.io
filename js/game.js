@@ -10,15 +10,34 @@ ctx.imageSmoothingEnabled = false;
 const BASE_W = 800;
 const BASE_H = 450;
 
+// The game is drawn in 800x450 "game units". The canvas has exactly one pixel per real
+// screen pixel and a transform scales game units up, so text renders as sharply as on
+// the HTML pages (it used to be drawn at 800x450 and stretched, which blurred it).
+let CANVAS_SCALE = 1;          // real canvas pixels per game unit
 function resizeCanvas() {
   const scaleX = window.innerWidth  / BASE_W;
   const scaleY = window.innerHeight / BASE_H;
   const scale  = Math.min(scaleX, scaleY);
-  canvas.width  = BASE_W;
-  canvas.height = BASE_H;
-  canvas.style.width  = (BASE_W * scale) + 'px';
-  canvas.style.height = (BASE_H * scale) + 'px';
+  const dpr    = window.devicePixelRatio || 1;
+  CANVAS_SCALE = Math.max(0.5, Math.min(5, scale * dpr));
+  canvas.width  = Math.round(BASE_W * CANVAS_SCALE);
+  canvas.height = Math.round(BASE_H * CANVAS_SCALE);
+  CANVAS_SCALE = canvas.width / BASE_W;
+  canvas.style.width  = (canvas.width / dpr) + 'px';    // 1 canvas pixel = 1 screen pixel
+  canvas.style.height = (canvas.height / dpr) + 'px';
+  ctx.setTransform(CANVAS_SCALE, 0, 0, CANVAS_SCALE, 0, 0);
+  ctx.imageSmoothingEnabled = false;   // resizing a canvas resets this
 }
+// Pixel art is made of many touching rectangles. At uneven scales their edges fall
+// between screen pixels and blend, leaving faint seams, so every rectangle snaps to
+// whole screen pixels (neighbours share an edge, so they still meet exactly).
+// (The browser's fillRect is looked up on every call, so tools that wrap it still see them.)
+ctx.fillRect = function (x, y, w, h) {
+  const s = CANVAS_SCALE;
+  const x0 = Math.round(x * s), y0 = Math.round(y * s);
+  const x1 = Math.round((x + w) * s), y1 = Math.round((y + h) * s);
+  CanvasRenderingContext2D.prototype.fillRect.call(this, x0 / s, y0 / s, (x1 - x0) / s, (y1 - y0) / s);
+};
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
@@ -96,10 +115,14 @@ function reportLevelClear() {
   campaign.achLevel = campaign.level;
   const shots = (campaign.shotsFired || 0) - levelStats.shots0;
   const hits  = (campaign.shotsHit || 0) - levelStats.hits0;
+  // No-damage streak (levels above 10 in a row without taking any damage) for the
+  // CLEAN STREAK (5) and SPOTLESS (10) achievements. Any hit starts it over.
+  if (campaign.level > 10) campaign.cleanStreak = levelStats.damage <= 0 ? (campaign.cleanStreak || 0) + 1 : 0;
   clearAchievements = achToasts.splice(0).concat(ACH.levelCleared({
     level: campaign.level, boss: isBossLevel(), timeMs: levelStats.timeMs,
     damage: levelStats.damage, shots, hits,
     abilityOnly: levelStats.abilityDmg > 0 && levelStats.plainDmg <= 0,
+    cleanStreak: campaign.cleanStreak || 0,
   }).map(achText));
   if (MODE.id === 'endless') clearAchievements.push(...ACH.max('bestWave', campaign.level).map(achText));
   persistCampaign();
@@ -297,6 +320,8 @@ function drawEventBanner() {
   ctx.globalAlpha = 1;
 }
 
+// Right under the last line of the right-hand HUD (campaign type badge, if any)
+const eventBadgeY = () => PAUSE_BTN.y + PAUSE_BTN.h + 14 + (MODE.id !== 'normal' ? 62 : 50);
 // Show active event(s) as small badges in the HUD (top-right, below level/riels)
 function drawEventHUDBadge() {
   if (levelEvent.id === 'none' || gameState !== 'playing') return;
@@ -304,7 +329,7 @@ function drawEventHUDBadge() {
   ctx.textAlign = 'right';
   (levelEvent.list.length ? levelEvent.list : [levelEvent]).forEach((ev, i) => {
     ctx.fillStyle = ev.color;
-    ctx.fillText(ev.label, BASE_W - 10, PAUSE_BTN.y + PAUSE_BTN.h + 90 + i * 10);
+    ctx.fillText(ev.label, BASE_W - 10, eventBadgeY() + i * 10);
   });
   ctx.textAlign = 'left';
 }
@@ -1736,7 +1761,7 @@ function updatePowerups() {
         player.speedPowerTimer = SPEED_POWER_DURATION_FRAMES;
         dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'SPD x' + SPEED_POWER_MULT, color: '#27ae60', life: 60, vy: -1.2, isText: true });
       }
-      playPickupSound && playPickupSound();
+      if (typeof playPickupSound === 'function') playPickupSound();   // (a bare reference threw: it isn't defined)
     }
   }
 }
@@ -2068,9 +2093,10 @@ function drawNPCs() {
     if (sx > BASE_W + 40 || sx < -40) continue;
 
     if (n.dead) {
-      // Show skull for 2 seconds (120 frames)
-      if (n.deadTimer < 120) {
-        drawSkull(n.x, n.y);
+      // Skull drifts up and slowly turns see-through until it's gone (2 seconds)
+      if (n.deadTimer < SKULL_FRAMES) {
+        const t = n.deadTimer / SKULL_FRAMES;
+        drawSkull(n.x + n.w / 2 - 7, n.y - t * SKULL_RISE + (n.h - 15) / 2, 1 - t * t * (3 - 2 * t));   // smooth fade
       }
       continue;
     }
@@ -2138,7 +2164,43 @@ function respawnPlayer() {
   player.y            = GROUND_Y - PLAYER_H;
   player.vx           = 0;
   player.vy           = 0;
-  player.hitFlash     = 0;
+  // A moment of safety (blinking), and nearby enemies get knocked back and stunned, so you
+  // never respawn into the crowd that just killed you and die again in the same instant.
+  player.invuln       = RESPAWN_INVULN_FRAMES;
+  player.hitFlash     = RESPAWN_INVULN_FRAMES;
+  const cx = playerCX();
+  for (const n of npcs) {
+    if (n.dead) continue;
+    const dx = centerX(n) - cx;
+    if (Math.abs(dx) > RESPAWN_CLEAR_RADIUS) continue;
+    n.vx = (Math.sign(dx) || 1) * (n.isBoss ? 3 : 6);
+    n.vy = n.isBoss ? -3 : -5;
+    n.onGround = false;
+    n.stun = Math.max(n.stun || 0, 45);
+    n.fuse = 0;                                   // bombers lose their lit fuse
+  }
+  abilityFx.push({ type: 'ring', x: cx, y: player.y + PLAYER_H / 2, r: RESPAWN_CLEAR_RADIUS, color: '#ffffff', life: 24, max: 24 });
+}
+const RESPAWN_INVULN_FRAMES = 150;   // 2.5s
+const RESPAWN_CLEAR_RADIUS  = 160;
+
+// While waiting to respawn (lives left), say so — otherwise the paused-looking scene
+// (enemies wait for you) can look like the game froze.
+function drawRespawnNotice() {
+  if (gameState !== 'playing' || !player.dead || player.lives <= 0) return;
+  const cx = BASE_W / 2, cy = BASE_H / 2 - 40;
+  ctx.fillStyle = 'rgba(10,14,26,0.8)';
+  ctx.fillRect(cx - 150, cy - 26, 300, 52);
+  ctx.fillStyle = '#e74c3c';
+  ctx.fillRect(cx - 150, cy - 26, 300, 3);
+  ctx.textAlign = 'center';
+  ctx.font = '10px "Public Pixel", monospace';
+  ctx.fillStyle = '#e74c3c';
+  ctx.fillText('LOST A LIFE', cx, cy - 4);
+  ctx.font = '7px "Public Pixel", monospace';
+  ctx.fillStyle = '#e8e8d0';
+  ctx.fillText('RESPAWNING IN ' + Math.max(1, Math.ceil(player.respawnTimer / 60)) + '  ·  ' + '♥'.repeat(player.lives) + ' LEFT', cx, cy + 14);
+  ctx.textAlign = 'left';
 }
 
 function handleCampaignOver() {
@@ -2450,19 +2512,25 @@ function drawPlayer() {
 // ═══════════════════════════════════════════════════════════════
 //  SKULL SPRITE
 // ═══════════════════════════════════════════════════════════════
-function drawSkull(wx, y) {
+// alpha: 0-1 (enemy skulls float up and fade away; see drawNPCs).
+function drawSkull(wx, y, alpha = 1) {
+  if (alpha <= 0) return;
   const S = PIXEL;
   function p(col, row, color) {
     ctx.fillStyle = color;
     ctx.fillRect(wp(wx) + col * S, y + row * S, S, S);
   }
   const w = '#e8e8d0', d = '#0a0e1a';
+  ctx.globalAlpha = alpha;
   p(1,0,w);p(2,0,w);p(3,0,w);
   p(0,1,w);p(1,1,d);p(2,1,w);p(3,1,d);p(4,1,w);
   p(0,2,w);p(1,2,w);p(2,2,w);p(3,2,w);p(4,2,w);
   p(1,3,w);p(2,3,d);p(3,3,w);
   p(1,4,w);p(2,4,w);p(3,4,w);
+  ctx.globalAlpha = 1;
 }
+const SKULL_FRAMES = 120;   // an enemy's skull floats up and fades out over 2 seconds
+const SKULL_RISE   = 40;    // px it rises in that time
 
 // ═══════════════════════════════════════════════════════════════
 //  DRAW BACKGROUND + GROUND
@@ -2730,7 +2798,22 @@ function drawHUD() {
     const slots = ABILITY_SLOTS.filter(sl => sl.def).length;
     ctx.fillStyle = 'rgba(10,14,26,0.78)';
     ctx.fillRect(4, 4, player.overHp > 0 ? 300 : 196, 80 + (powerupRow() ? 12 : 0) + slots * 24);
-    ctx.fillRect(BASE_W - 168, PAUSE_BTN.y + PAUSE_BTN.h + 2, 164, 112);
+    // Right panel: just wide and tall enough for the lines it holds (level, riels, damage,
+    // enemies left, campaign type, event names)
+    const lines = [window.RielModes.stageLabel(campaign, true), campaign.riels + ' KHR',
+      'DMG ' + (Math.round(classDamage() * 10) / 10) + (PLAYER_CLASS.pellets ? 'x' + PLAYER_CLASS.pellets : ''),
+      npcs.filter(n => !n.dead).length + ' LEFT'];
+    if (MODE.id !== 'normal') lines.push(MODE.timed ? MODE.name + ' ' + window.RielModes.formatTime(campaign.playTimeMs) : MODE.name);
+    ctx.font = '7px "Public Pixel", monospace';
+    let wMax = Math.max(...lines.map(t => ctx.measureText(t).width));
+    const events = levelEvent.id === 'none' ? [] : (levelEvent.list.length ? levelEvent.list : [levelEvent]);
+    ctx.font = '5px "Public Pixel", monospace';
+    for (const ev of events) wMax = Math.max(wMax, ctx.measureText(ev.label).width);
+    const top = PAUSE_BTN.y + PAUSE_BTN.h + 2, rowY = PAUSE_BTN.y + PAUSE_BTN.h + 14;
+    const bottom = events.length ? eventBadgeY() + (events.length - 1) * 10 + 4 : rowY + (MODE.id !== 'normal' ? 48 : 36) + 5;
+    const pw = Math.ceil(wMax) + 14;
+    ctx.fillStyle = 'rgba(10,14,26,0.78)';
+    ctx.fillRect(BASE_W - 10 - pw + 7, top, pw, bottom - top);
   }
 
   // HP bar
@@ -3207,6 +3290,7 @@ function loop() {
   updateDrawDmgNumbers();
   drawHUD();
   drawEventHUDBadge();
+  drawRespawnNotice();
   drawToast();
   drawEventBanner();
   drawOverlay();

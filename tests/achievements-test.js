@@ -138,6 +138,28 @@ const clearLevel = "npcs.forEach(n => { if (!n.dead) killNPC(n); });";
   ok(!has('ability_only'), 'ABILITY MASTER needs level 5 or higher');
   ok(E('levelStats.plainDmg') === 0, 'level stats track plain damage separately');
 
+  // ── CLEAN STREAK (5) / SPOTLESS (10): levels above 10 in a row without taking damage ──
+  fresh(); put({ ...base, mode: 'normal', level: 15, cleanStreak: 3 });
+  await go('game.html');
+  E("applyLevelEvent(null); levelStats.timeMs = 50000;" + clearLevel);
+  ok(E('campaign.cleanStreak') === 4 && !has('clean_5'), 'clean level above 10: streak 3 -> 4, no achievement yet');
+  fresh(); put({ ...base, mode: 'normal', level: 16, cleanStreak: 4 });
+  await go('game.html');
+  E("applyLevelEvent(null); levelStats.timeMs = 50000;" + clearLevel);
+  ok(has('clean_5') && !has('clean_10') && prof().gems >= 200, '5 clean levels in a row: CLEAN STREAK (+200 gems)');
+  fresh(); put({ ...base, mode: 'normal', level: 21, cleanStreak: 9 });
+  await go('game.html');
+  E("applyLevelEvent(null); levelStats.timeMs = 50000;" + clearLevel);
+  ok(has('clean_10') && has('clean_5'), '10 clean levels in a row: SPOTLESS (a separate achievement)');
+  fresh(); put({ ...base, mode: 'normal', level: 22, cleanStreak: 9 });
+  await go('game.html');
+  E("applyLevelEvent(null); levelStats.timeMs = 50000; damagePlayer(1);" + clearLevel);
+  ok(E('campaign.cleanStreak') === 0 && !has('clean_10'), 'taking any damage starts the streak over');
+  fresh(); put({ ...base, mode: 'normal', level: 9, cleanStreak: 0 });
+  await go('game.html');
+  E("applyLevelEvent(null); levelStats.timeMs = 50000;" + clearLevel);
+  ok(!E('campaign.cleanStreak'), 'levels 1-10 do not count toward the streak');
+
   // ── Kills: mid-level unlock shows as a toast ──
   fresh({ kills: 99 });
   put({ ...base, mode: 'normal', level: 4 });
@@ -202,6 +224,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=60000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=120000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));

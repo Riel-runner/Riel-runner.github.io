@@ -38,6 +38,29 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   a = active();
   ok(a.lives === 3 && a.hp === a.maxHp, 'boss level clear: lives restored to 3 (' + a.lives + '), HP full');
 
+  // Losing a life: a notice while waiting, then a safe respawn (the game used to look frozen:
+  // you respawned next to the enemies that killed you and died again in the same instant)
+  put({ ...base, level: 59, lives: 3, hp: 170 });
+  await go('game.html');
+  const W = f.contentWindow;
+  W.eval("window.requestAnimationFrame = () => 0; applyLevelEvent(null); eventBannerTimer = 0; gameState = 'playing'; npcs.forEach(n => { n.x = player.x + 6 + Math.random() * 30; n.aware = true; }); player.hp = 1; damagePlayer(50);");
+  ok(W.eval('player.dead') && W.eval('player.lives') === 2, 'losing a life: player down, 2 lives left');
+  const texts = [];
+  W.eval("window.__t = []; const ft = CanvasRenderingContext2D.prototype.fillText; CanvasRenderingContext2D.prototype.fillText = function (t) { window.__t.push(String(t)); return ft.apply(this, arguments); }; loop();");
+  ok(W.eval("__t.some(t => /LOST A LIFE/.test(t)) && __t.some(t => /RESPAWNING IN 2/.test(t))"), 'while waiting: "LOST A LIFE · RESPAWNING IN 2" notice');
+  for (let i = 0; i < 125 && W.eval('player.dead'); i++) W.eval('loop()');
+  ok(!W.eval('player.dead') && W.eval('player.lives') === 2, 'respawns after 2 seconds, still 2 lives');
+  ok(W.eval('player.invuln') > 100, 'respawn gives a moment of invulnerability (' + W.eval('player.invuln') + ' frames)');
+  ok(W.eval("npcs.filter(n => !n.dead && Math.abs(centerX(n) - playerCX()) < 160).every(n => n.stun > 0 && n.vx !== 0)"), 'enemies next to the respawn point are knocked back and stunned');
+  W.eval("player.hp = player.maxHp;");
+  ok(W.eval('damagePlayer(9999)') === 0 && !W.eval('player.dead'), 'no damage during that moment');
+  for (let i = 0; i < 60; i++) W.eval('loop()');
+  ok(!W.eval('player.dead') && W.eval('player.lives') === 2, 'one second later you are still alive (no instant re-death)');
+  // Picking up a power-up must not crash the frame
+  let err = null;
+  try { W.eval("powerups.length = 0; powerups.push({ x: player.x, y: player.y, w: 12, h: 10, type: 'jump', collected: false }); updatePowerups();"); } catch (e) { err = e.message; }
+  ok(!err && W.eval('player.jumpPowerTimer') > 0, 'picking up a power-up works without an error (' + (err || 'ok') + ')');
+
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
 `;
@@ -53,6 +76,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=20000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=60000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));
