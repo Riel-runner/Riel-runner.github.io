@@ -33,9 +33,9 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   localStorage.removeItem('rielrunner_profile');
   await go('store.html');
   d = f.contentDocument;
-  ok(d.querySelectorAll('.tab').length === 4 && d.querySelectorAll('.store-card').length === 6, '4 tabs (classes / weapon / player / trail), 6 classes');
+  ok(d.querySelectorAll('.tab').length === 5 && d.querySelectorAll('.store-card').length === 6, '5 tabs (classes / weapon / player / trail / abilities), 6 classes');
   ok(d.getElementById('gem-count').textContent === '0' && /EQUIPPED/.test(d.querySelector('.store-card').textContent), 'new profile: 0 gems, free GUNNER class equipped');
-  ok([...d.querySelectorAll('.store-btn.is-buy')].every(b => b.disabled), 'cannot buy anything with 0 gems');
+  ok([...d.querySelectorAll('.store-btn.is-buy')].every(b => b.disabled), 'cannot buy (or spin) anything with 0 gems');
   ok(!/RIELS|LEVEL COMPLETE|AVAILABLE UPGRADES/.test(d.body.textContent), 'shows none of the upgrade-shop stuff');
 
   // Buy and equip

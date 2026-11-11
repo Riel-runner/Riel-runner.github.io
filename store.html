@@ -20,7 +20,7 @@
   <a class="back-btn" href="index.html">&#9664; BACK</a>
 
   <div class="page-title">SHOP</div>
-  <div class="page-sub">NEW CLASSES AND LOOKS FOR YOUR RUNNER</div>
+  <div class="page-sub">NEW CLASSES, ABILITIES AND LOOKS FOR YOUR RUNNER</div>
   <div class="divider"></div>
 
   <!-- Gem balance (shared by every campaign) -->
@@ -46,6 +46,21 @@
     <button class="tab" role="tab" data-cat="weapon">WEAPON SKINS</button>
     <button class="tab" role="tab" data-cat="player">PLAYER SKINS</button>
     <button class="tab" role="tab" data-cat="trail">TRAILS</button>
+    <button class="tab tab-ability" role="tab" data-cat="ability">ABILITIES</button>
+  </div>
+
+  <!-- Abilities: spin the wheel, then equip / upgrade below (js/abilities.js) -->
+  <div class="ability-panel" id="ability-panel" hidden>
+    <div class="wheel-wrap">
+      <div class="wheel-pointer"></div>
+      <div class="wheel" id="wheel"><div class="wheel-hub"></div></div>
+    </div>
+    <div class="wheel-odds" id="wheel-odds"></div>
+    <button class="store-btn is-buy roll-btn" id="roll-btn" type="button"></button>
+    <div class="roll-result" id="roll-result" hidden></div>
+    <div class="ability-help">PRESS <b>E</b> IN GAME TO USE YOUR EQUIPPED ABILITY &middot; ROLL REPEATS TO UPGRADE:
+      <b>3</b> COPIES FOR LV 2, THEN <b>10</b> MORE TO <b>AWAKEN</b> IT WITH A NEW TRAIT</div>
+    <div class="ability-list" id="ability-list"></div>
   </div>
 
   <div class="store-grid" id="store-grid"></div>
@@ -56,7 +71,9 @@
 <div class="version">V7 RIEL RUNNER</div>
 
 <script src="js/cosmetics.js"></script>
+<script src="js/abilities.js"></script>
 <script src="js/store.js"></script>
+<script src="js/store-abilities.js"></script>
   <script src="js/click-sounds.js"></script>
 </body>
 </html>

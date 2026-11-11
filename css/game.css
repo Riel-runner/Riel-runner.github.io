@@ -216,3 +216,16 @@ body {
 .death-revive:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px #8e1a10; }
 .death-revive:disabled { background: #1e2440; color: #555566; box-shadow: 0 5px #111122; cursor: not-allowed; }
 .death-revive[hidden] { display: none; }
+
+/* Ability button (only shown when an ability is equipped): left of the shoot button */
+#btn-ability {
+  right: 150px;
+  bottom: 120px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  font-size: 12px;
+  border-width: 3px;
+}
+#btn-ability[hidden] { display: none; }
+#btn-ability.cooldown { opacity: 0.4; font-size: 9px; }

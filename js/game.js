@@ -60,6 +60,9 @@ const TRAIL_ID    = window.RielCosmetics.equipped('trail').id;
 // (js/upgrades.js) are based on these numbers too.
 const PLAYER_CLASS = window.RielCosmetics.equipped('class');
 const classDamage  = () => player.gunDamage * PLAYER_CLASS.dmg;          // per bullet / pellet
+// Ability won on the gem shop wheel (js/abilities.js): { def, level, awakened, s } or null.
+// Used with E (or the touch button); see the ABILITIES section.
+const ABILITY = window.RielAbilities.equippedInfo();
 const trailParticles = [];
 
 // Run stats shown on the death screen / campaign details. Older saves won't
@@ -310,6 +313,13 @@ const player = {
   dashTimer: 0,
   dashVx: 0,
   isDashing: false,
+  // ability (frames): cooldown left, active effect left, Med Kit regen left
+  abilityCd: 0,
+  abilityTime: 0,
+  regenTime: 0,
+  // Overcharge: extra HP above max from awakened Life Leech. Normal healing can't
+  // add to it; damage uses it up first. Carried between levels until it's gone.
+  overHp: campaign.overHp || 0,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -496,14 +506,19 @@ function updatePlayer() {
     return;
   }
 
+  // Ability: E (or the touch button) uses it; timers tick here
+  updateAbilityTimers();
+  if (keys['KeyE']) { keys['KeyE'] = false; useAbility(); }
+
   // Horizontal
   let moving = false;
+  const runSpeed = MOVE_SPEED * PLAYER_SPEED_MULT * (player.speedMult || 1) * (abilityOn('adrenaline') ? ADRENALINE_SPEED : 1);
   if (keys['ArrowLeft']) {
-    player.vx = -MOVE_SPEED * PLAYER_SPEED_MULT * (player.speedMult || 1);
+    player.vx = -runSpeed;
     player.facingRight = false;
     moving = true;
   } else if (keys['ArrowRight']) {
-    player.vx = MOVE_SPEED * PLAYER_SPEED_MULT * (player.speedMult || 1);
+    player.vx = runSpeed;
     player.facingRight = true;
     moving = true;
   } else {
@@ -521,7 +536,7 @@ function updatePlayer() {
     player.isDashing = true;
     player.dashTimer  = DASH_DURATION;
     player.dashVx     = player.facingRight ? DASH_DISTANCE / DASH_DURATION : -DASH_DISTANCE / DASH_DURATION;
-    player.dashCooldown = DASH_COOLDOWN;
+    player.dashCooldown = abilityOn('adrenaline') && ABILITY.awakened ? 0 : DASH_COOLDOWN; // Rush trait: no cooldown
     keys['ArrowDown'] = false; // consume key so it doesn't retrigger
   }
 
@@ -600,7 +615,7 @@ function updatePlayer() {
   const wantShoot = keys['Space'] || mouseDown;
   if (wantShoot && player.shootTimer <= 0) {
     firePlayerBullet();
-    player.shootTimer = Math.max(4, Math.round(PLAYER_SHOOT_CD * (levelEvent.fireRateMult || 1))); // SHOOT_COOLDOWN reduced by the Fire Rate upgrade and fast-fire event
+    player.shootTimer = Math.max(4, Math.round(PLAYER_SHOOT_CD * (levelEvent.fireRateMult || 1) / (abilityOn('quickdraw') ? QUICKDRAW_FIRE : 1))); // SHOOT_COOLDOWN reduced by the Fire Rate upgrade, fast-fire event and Quick Draw
   }
 
   // Camera: keep player centred-ish
@@ -702,8 +717,8 @@ function firePlayerBullet() {
     return;
   }
 
-  // Consume one bullet
-  player.bullets = Math.max(0, player.bullets - 1);
+  // Consume one bullet (not during awakened Quick Draw: Bottomless trait)
+  if (!(abilityOn('quickdraw') && ABILITY.awakened)) player.bullets = Math.max(0, player.bullets - 1);
 
   const startX = player.facingRight
     ? player.x + PLAYER_W + 2
@@ -1029,6 +1044,11 @@ function updateNPCs() {
     // Decrement attack cooldown
     if (n.attackCooldown > 0) n.attackCooldown--;
 
+    // Frozen (Freeze ability) or stunned (awakened Shockwave): no thinking, moving or attacking
+    const frozen = n.frozen > 0 || n.stun > 0;
+    if (n.frozen > 0) n.frozen--;
+    if (n.stun > 0) n.stun--;
+
     // ── Awareness: notice the player when on screen, or when called by an ally ──
     const screenX = wp(n.x);
     if (!n.aware) {
@@ -1037,7 +1057,7 @@ function updateNPCs() {
     }
 
     // ── Decide (every few frames, like a reaction time) and move ──
-    if (n.aware && !player.dead) {
+    if (n.aware && !player.dead && !frozen) {
       if (n.isBoss) {
         bossAI(n);
       } else {
@@ -1084,7 +1104,7 @@ function updateNPCs() {
 
     // ── Collision with player — contact damage (with per-NPC cooldown) ──
     n.touching = false;
-    if (!player.dead) {
+    if (!player.dead && !frozen) {
       const overlap =
         player.x < n.x + n.w &&
         player.x + PLAYER_W > n.x &&
@@ -1117,11 +1137,7 @@ function updateNPCs() {
           break;
         }
         addStat('shotsHit');
-        const shotDmg = classDamage() * (levelEvent.playerDmgMult || 1); // class weapon x level event
-        n.hp -= shotDmg;
-        spawnDmgNumber(n.x, n.y - 4, shotDmg, '#f5c400');
-        alertNPC(n, true); // getting shot always gets their attention (and their friends')
-        if (n.hp <= 0) killNPC(n);
+        hitNPC(n, classDamage() * (levelEvent.playerDmgMult || 1)); // class weapon x level event
         break;
       }
     }
@@ -1698,6 +1714,7 @@ function applyLevelClearRewards() {
   campaign.levelState = null; // level finished: nothing to resume (null, not delete, so saves overwrite it)
   campaign.maxHp = player.maxHp;
   campaign.hp    = player.maxHp;
+  campaign.overHp = Math.round(player.overHp || 0); // overcharge stays until damage uses it up
   campaign.lives = isBossLevel() ? Math.max(MAX_LIVES, player.lives) : player.lives; // keep bought extra lives
 }
 
@@ -1719,14 +1736,212 @@ function goToVictory() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  ABILITIES (won on the gem shop wheel, js/abilities.js)
+// ═══════════════════════════════════════════════════════════════
+// One equipped ability, used with E. Numbers per level come from ABILITY.s; the
+// awakened trait (level 3) adds an extra effect. Cooldowns reset each level.
+const ADRENALINE_SPEED = 1.4;  // move speed while Adrenaline is active
+const QUICKDRAW_FIRE   = 1.5;  // fire rate while Quick Draw is active
+const AWAKEN_DMG_MULT  = 1.5;  // Shield (Power Surge) and Freeze (Shatter) traits
+const OVERCHARGE_MAX   = 0.5;  // Life Leech (Overcharge): extra HP up to 50% of max HP
+const abilityFx = [];          // visuals: { type: 'ring' | 'bolt', ... , life, max }
+let noAbilityToastAt = -999;
+
+const abilityOn = id => !!ABILITY && ABILITY.def.id === id && player.abilityTime > 0;
+const onScreen = n => wp(n.x) > -n.w && wp(n.x) < BASE_W;
+const aliveNPCs = () => npcs.filter(n => !n.dead);
+
+function useAbility() {
+  if (gameState !== 'playing' || player.dead) return false;
+  if (!ABILITY) {
+    if (frameCount - noAbilityToastAt > 180) { noAbilityToastAt = frameCount; showToast('NO ABILITY: SPIN THE WHEEL IN THE SHOP'); }
+    return false;
+  }
+  if (player.abilityCd > 0) return false;
+  const { def, s, awakened } = ABILITY;
+  const cx = playerCX(), cy = player.y + PLAYER_H / 2;
+  player.abilityCd = def.cd * 60;
+  switch (def.id) {
+    case 'shield':
+    case 'adrenaline':
+    case 'leech':
+      player.abilityTime = Math.round(s.dur * 60);
+      break;
+    case 'quickdraw':
+      player.reloadTimer = 0;
+      player.bullets = MAG_SIZE;
+      player.abilityTime = Math.round(s.dur * 60);
+      break;
+    case 'medkit': {
+      const heal = player.maxHp * s.heal / 100;
+      player.hp = Math.min(player.maxHp, player.hp + heal);
+      if (awakened) player.regenTime = 5 * 60;           // Recovery trait
+      dmgNumbers.push({ x: player.x, y: player.y - 10, amount: '+' + Math.round(heal) + ' HP', color: '#2ecc71', life: 60, vy: -1.2, isText: true });
+      abilityFx.push({ type: 'ring', x: cx, y: cy, r: 40, color: def.color, life: 20, max: 20 });
+      break;
+    }
+    case 'shockwave':
+      for (const n of aliveNPCs()) {
+        const dx = centerX(n) - cx, dy = (n.y + n.h / 2) - cy;
+        if (Math.hypot(dx, dy) > s.radius) continue;
+        hitNPC(n, classDamage() * s.dmg, def.color);
+        if (n.dead) continue;
+        n.vx = (Math.sign(dx) || 1) * (n.isBoss ? 2 : 5);   // knocked back
+        n.vy = n.isBoss ? -2 : -4;
+        n.onGround = false;
+        if (awakened) n.stun = 90;                        // Concussion trait
+      }
+      abilityFx.push({ type: 'ring', x: cx, y: cy, r: s.radius, color: def.color, life: 24, max: 24 });
+      break;
+    case 'freeze':
+      for (const n of aliveNPCs()) {
+        if (onScreen(n)) n.frozen = Math.round(s.dur * 60 * (n.isBoss ? 0.5 : 1));
+      }
+      abilityFx.push({ type: 'ring', x: cx, y: cy, r: BASE_W, color: def.color, life: 30, max: 30 });
+      break;
+    case 'lightning': {
+      const targets = aliveNPCs().filter(onScreen)
+        .sort((a, b) => Math.abs(centerX(a) - cx) - Math.abs(centerX(b) - cx)).slice(0, s.targets);
+      let from = { x: cx, y: cy };
+      for (const n of targets) {
+        const to = { x: centerX(n), y: n.y + n.h / 2 };
+        abilityFx.push({ type: 'bolt', x1: from.x, y1: from.y, x2: to.x, y2: to.y, color: def.color, life: 16, max: 16 });
+        hitNPC(n, classDamage() * s.dmg, def.color);
+        if (n.dead && awakened) player.abilityCd = Math.max(0, player.abilityCd - 4 * 60); // Overload trait
+        from = to;
+      }
+      break;
+    }
+  }
+  if (typeof playPickupSound === 'function') playPickupSound();
+  return true;
+}
+
+function updateAbilityTimers() {
+  if (player.abilityCd > 0) player.abilityCd--;
+  if (player.abilityTime > 0) player.abilityTime--;
+  if (player.shieldHit > 0) player.shieldHit--;
+  if (player.regenTime > 0) {
+    player.regenTime--;
+    player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.02 / 60);  // 2% max HP per second
+  }
+}
+
+// Every hit the player lands goes through here (bullets and abilities), so damage
+// traits and Life Leech apply to all of it.
+function hitNPC(n, dmg, color = '#f5c400') {
+  if (n.dead) return;
+  if (ABILITY && ABILITY.awakened) {
+    if (abilityOn('shield')) dmg *= AWAKEN_DMG_MULT;                              // Power Surge
+    if (ABILITY.def.id === 'freeze' && n.frozen > 0) dmg *= AWAKEN_DMG_MULT;       // Shatter
+  }
+  n.hp -= dmg;
+  spawnDmgNumber(n.x, n.y - 4, dmg, color);
+  if (abilityOn('leech')) leechHeal(dmg * ABILITY.s.pct / 100);
+  alertNPC(n, true); // getting hit always gets their attention (and their friends')
+  if (n.hp <= 0) killNPC(n);
+}
+
+// Life Leech healing. Awakened (Overcharge): what goes past max HP becomes overcharge.
+function leechHeal(amount) {
+  const room = player.maxHp - player.hp;
+  player.hp = Math.min(player.maxHp, player.hp + amount);
+  if (ABILITY.awakened && amount > room) {
+    player.overHp = Math.min(player.maxHp * OVERCHARGE_MAX, (player.overHp || 0) + amount - Math.max(0, room));
+  }
+}
+
+// Frozen / stunned enemies, the active ability around the player, rings and bolts.
+function drawAbilityFx() {
+  for (const n of npcs) {
+    if (n.dead) continue;
+    if (n.frozen > 0) {
+      ctx.fillStyle = 'rgba(155,231,255,0.45)';
+      ctx.fillRect(wp(n.x) - 2, n.y - 2, n.w + 4, n.h + 4);
+      ctx.fillStyle = '#e8fbff';
+      ctx.fillRect(wp(n.x) - 2, n.y - 2, n.w + 4, 2);
+    } else if (n.stun > 0) {
+      ctx.fillStyle = '#f5c400';
+      const t = frameCount / 6;
+      for (let i = 0; i < 3; i++) {
+        const a = t + i * 2.1;
+        ctx.fillRect(Math.round(wp(n.x) + n.w / 2 + Math.cos(a) * 9) - 1, n.y - 8 + Math.round(Math.sin(a) * 3), 3, 3);
+      }
+    }
+  }
+  if (ABILITY && player.abilityTime > 0 && !player.dead) {
+    const x = wp(playerCX()), y = player.y + PLAYER_H / 2;
+    const pulse = 0.35 + 0.2 * Math.sin(frameCount / 5);
+    ctx.globalAlpha = player.shieldHit > 0 ? 0.9 : pulse;
+    ctx.strokeStyle = ABILITY.def.color;
+    ctx.lineWidth = ABILITY.def.id === 'shield' ? 3 : 2;
+    ctx.beginPath();
+    ctx.arc(x, y, ABILITY.def.id === 'shield' ? 22 : 19, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  for (let i = abilityFx.length - 1; i >= 0; i--) {
+    const f = abilityFx[i];
+    const k = f.life / f.max;
+    ctx.globalAlpha = k;
+    ctx.strokeStyle = f.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (f.type === 'ring') {
+      ctx.arc(wp(f.x), f.y, Math.max(1, f.r * (1 - k * 0.7)), 0, Math.PI * 2);
+    } else {                                  // zig-zag lightning bolt
+      const steps = 6;
+      ctx.moveTo(wp(f.x1), f.y1);
+      for (let j = 1; j < steps; j++) {
+        const t = j / steps;
+        ctx.lineTo(wp(f.x1 + (f.x2 - f.x1) * t) + (Math.random() - 0.5) * 10, f.y1 + (f.y2 - f.y1) * t + (Math.random() - 0.5) * 10);
+      }
+      ctx.lineTo(wp(f.x2), f.y2);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    if (gameState === 'playing' && --f.life <= 0) abilityFx.splice(i, 1);
+  }
+}
+
+// HUD slot under the dash bar: icon, name, cooldown / time left, [E].
+function drawAbilityHUD(barX, y) {
+  if (!ABILITY) return;
+  const { def } = ABILITY;
+  ctx.fillStyle = 'rgba(15,21,38,0.75)';
+  ctx.fillRect(barX, y, 20, 20);
+  window.RielAbilities.drawIcon(ctx, def, barX + 2, y + 2, 2, player.abilityCd > 0 && player.abilityTime <= 0);
+  const ready = player.abilityCd <= 0;
+  const barW = 58, bx = barX + 24;
+  ctx.fillStyle = '#1a1e30';
+  ctx.fillRect(bx, y + 12, barW, 6);
+  if (player.abilityTime > 0) {               // active: time left
+    ctx.fillStyle = def.color;
+    ctx.fillRect(bx, y + 12, barW * player.abilityTime / Math.round(ABILITY.s.dur * 60), 6);
+  } else {
+    ctx.fillStyle = ready ? '#2ecc71' : '#555577';
+    ctx.fillRect(bx, y + 12, barW * (ready ? 1 : 1 - player.abilityCd / (def.cd * 60)), 6);
+  }
+  ctx.font = '5px "Public Pixel", monospace';
+  ctx.fillStyle = ready ? def.color : '#888870';
+  ctx.fillText(def.name + (ABILITY.awakened ? ' *' : ''), bx, y + 7);
+  ctx.fillStyle = ready ? '#2ecc71' : '#888870';
+  ctx.fillText(ready ? '[E] READY' : Math.ceil(player.abilityCd / 60) + 'S', bx + barW + 4, y + 18);
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  PLAYER DAMAGE
 // ═══════════════════════════════════════════════════════════════
 // Returns the damage actually taken (after the Armor upgrade).
 function damagePlayer(amount, isTick) {
   if (player.dead) return 0;
   if (player.invuln > 0) return 0;  // just revived: a moment of safety
+  if (abilityOn('shield')) { player.shieldHit = 8; return 0; } // Shield ability blocks everything
   amount *= (1 - ARMOR_BLOCK) * (levelEvent.playerDamageTakenMult || 1);
-  player.hp -= amount;
+  // Overcharge soaks damage before HP does
+  const soaked = Math.min(player.overHp || 0, amount);
+  player.overHp = (player.overHp || 0) - soaked;
+  player.hp -= amount - soaked;
   levelStats.damage += amount;
   player.hitFlash = 20;
   if (player.hp <= 0) {
@@ -2567,9 +2782,19 @@ function drawHUD() {
   const hpFrac = Math.max(0, player.hp / player.maxHp);
   ctx.fillStyle = hpFrac > 0.5 ? '#2ecc71' : hpFrac > 0.25 ? '#f5c400' : '#e74c3c';
   ctx.fillRect(barX, barY, barW * hpFrac, barH);
+  // Overcharge (awakened Life Leech): extra HP drawn as a pink layer over the bar
+  if (player.overHp > 0) {
+    ctx.fillStyle = 'rgba(255,77,109,0.85)';
+    ctx.fillRect(barX, barY, barW * Math.min(1, player.overHp / player.maxHp), 4);
+    ctx.fillRect(barX, barY + barH - 3, barW * Math.min(1, player.overHp / player.maxHp), 3);
+  }
   ctx.fillStyle = '#e8e8d0';
   ctx.font = '6px "Public Pixel", monospace';
   ctx.fillText('HP ' + Math.ceil(player.hp) + ' / ' + player.maxHp, barX + 4, barY + 10);
+  if (player.overHp > 0) {
+    ctx.fillStyle = '#ff4d6d';
+    ctx.fillText('+' + Math.ceil(player.overHp) + ' OVERCHARGE', barX + barW + 6, barY + 10);
+  }
 
   // Lives (3 hearts, grey when lost)
   ctx.font = '11px "Public Pixel", monospace';
@@ -2616,6 +2841,7 @@ function drawHUD() {
   ctx.font = '5px "Public Pixel", monospace';
   ctx.fillStyle = dashReady ? '#2ecc71' : '#888870';
   ctx.fillText(dashReady ? 'DASH RDY' : 'DASH ' + Math.ceil(player.dashCooldown / 60) + 'S', barX, barY + 68);
+  drawAbilityHUD(barX, barY + 74);
 
   // Right panel (below the pause button)
   const rightY = PAUSE_BTN.y + PAUSE_BTN.h + 14;
@@ -2807,7 +3033,10 @@ function proceedToShop() {
     'btn-jump':  'ArrowUp',
     'btn-shoot': 'Space',
     'btn-dash':  'ArrowDown',
+    'btn-ability': 'KeyE',
   };
+  const abilityBtn = document.getElementById('btn-ability');
+  if (abilityBtn && ABILITY) { abilityBtn.hidden = false; abilityBtn.style.borderColor = ABILITY.def.color; }
 
   function setKey(code, down) { keys[code] = down; }
 
@@ -2841,6 +3070,10 @@ function proceedToShop() {
     } else {
       dashBtn.classList.remove('cooldown');
       dashBtn.textContent = 'DASH';
+    }
+    if (abilityBtn && ABILITY) {             // ability button: E, or seconds left on its cooldown
+      abilityBtn.classList.toggle('cooldown', player.abilityCd > 0);
+      abilityBtn.textContent = player.abilityCd > 0 ? Math.ceil(player.abilityCd / 60) + 'S' : 'E';
     }
     requestAnimationFrame(updateDashBtn);
   }
@@ -2887,7 +3120,7 @@ generatePowerups();
 // is cleared or the campaign falls.
 const PLAYER_SAVE_KEYS = ['x', 'y', 'vy', 'onGround', 'hp', 'maxHp', 'lives', 'gunDamage', 'bullets',
   'reloadTimer', 'facingRight', 'dead', 'deathX', 'respawnTimer', 'dashCooldown',
-  'jumpMult', 'jumpPowerTimer', 'speedMult', 'speedPowerTimer'];
+  'jumpMult', 'jumpPowerTimer', 'speedMult', 'speedPowerTimer', 'abilityCd', 'abilityTime', 'regenTime', 'overHp'];
 const AUTOSAVE_FRAMES = 5 * 60;
 
 // Write the campaign to the active save and to its slot in the campaign list.
@@ -2999,6 +3232,7 @@ function loop() {
   updateDrawDroppedMags();
   drawPowerups();
   drawNPCs();
+  drawAbilityFx();
   drawEnemyShots();
   drawBlasts();
   drawPlayer();

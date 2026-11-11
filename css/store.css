@@ -238,3 +238,102 @@ body::after {
 .class-stats span { color: #555566; }
 .class-stats b { color: #e8e8d0; font-weight: normal; }
 .class-desc { font-size: 5px; line-height: 1.8; color: #888870; letter-spacing: 0.06em; text-align: center; min-height: 26px; }
+
+/* ── Abilities tab (js/store-abilities.js) ── */
+.tabs { grid-template-columns: repeat(5, 1fr); }
+.tab-ability { color: #f5c400; border-color: #5a4a10; }
+.ability-panel { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.ability-panel[hidden], .store-grid[hidden] { display: none; }
+
+.wheel-wrap { position: relative; width: min(260px, 70vw); aspect-ratio: 1; margin-top: 10px; }
+.wheel {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 6px solid #1e2440;
+  box-shadow: 0 0 0 3px #f5c400, 0 8px 0 3px #3d2b1f;
+  overflow: hidden;
+}
+.wheel-label {
+  position: absolute; inset: 0;
+  padding-top: 13%;
+  text-align: center;
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  color: #0a0e1a;
+  pointer-events: none;
+}
+.wheel-hub {
+  position: absolute; left: 50%; top: 50%;
+  width: 22%; height: 22%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #0f1526;
+  border: 4px solid #f5c400;
+  z-index: 2;
+}
+.wheel-pointer {               /* fixed arrow at the top that the wheel stops under */
+  position: absolute; left: 50%; top: -14px;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 13px solid transparent;
+  border-right: 13px solid transparent;
+  border-top: 24px solid #ffffff;
+  filter: drop-shadow(0 3px 0 #b8920a);
+  z-index: 3;
+}
+.wheel-odds { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; font-size: 6px; letter-spacing: 0.08em; }
+.roll-btn { max-width: 260px; padding: 14px 0; font-size: 9px; }
+
+.roll-result {
+  width: 100%; max-width: 420px;
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px;
+  background: #0f1526;
+  border: 3px solid #1e2440;
+  animation: pop 0.35s ease-out;
+}
+.roll-result[hidden] { display: none; }
+.roll-result canvas { width: 48px; height: 48px; image-rendering: pixelated; flex-shrink: 0; }
+.roll-result.r-common    { border-color: #a8b8c8; }
+.roll-result.r-rare      { border-color: #3498db; }
+.roll-result.r-super     { border-color: #b05ce0; box-shadow: 0 0 18px rgba(176,92,224,0.45); }
+.roll-result.r-legendary { border-color: #f5c400; box-shadow: 0 0 24px rgba(245,196,0,0.55); }
+.rr-rarity { font-size: 7px; letter-spacing: 0.12em; margin-bottom: 6px; }
+.rr-name   { font-size: 11px; letter-spacing: 0.08em; margin-bottom: 8px; }
+.rr-sub    { font-size: 6px; color: #888870; letter-spacing: 0.08em; line-height: 1.7; }
+.roll-result.is-new .rr-sub { color: #2ecc71; }
+@keyframes pop { 0% { transform: scale(0.85); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+.ability-help { font-size: 6px; color: #555566; letter-spacing: 0.08em; line-height: 2; text-align: center; max-width: 520px; }
+.ability-help b { color: #e8e8d0; font-weight: normal; }
+
+.ability-list { width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 4px; }
+.ability-card {
+  background: #0f1526;
+  border: 3px solid #1e2440;
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.ability-card.locked { opacity: 0.55; }
+.ability-card.equipped { border-color: #f5c400; }
+.ability-card.awakened { box-shadow: inset 0 0 0 1px #f5c400, 0 0 14px rgba(245,196,0,0.25); }
+.ab-head { display: flex; align-items: center; gap: 10px; }
+.ab-head canvas { width: 40px; height: 40px; image-rendering: pixelated; background: #0a0e1a; flex-shrink: 0; }
+.ab-name { font-size: 9px; letter-spacing: 0.08em; margin-bottom: 6px; }
+.ab-tags { font-size: 6px; letter-spacing: 0.08em; }
+.ab-level { color: #e8e8d0; }
+.ability-card.awakened .ab-level { color: #f5c400; }
+.ab-desc  { font-size: 6px; line-height: 1.8; color: #c8c8b0; letter-spacing: 0.05em; }
+.ab-cd    { font-size: 6px; color: #5dade2; letter-spacing: 0.08em; }
+.ab-trait { font-size: 6px; line-height: 1.8; color: #444460; letter-spacing: 0.05em; }
+.ab-trait.on { color: #f5c400; }
+.ab-bar { width: 100%; height: 6px; background: #1e2440; }
+.ab-bar div { height: 100%; }
+.ab-copies { font-size: 6px; color: #888870; letter-spacing: 0.08em; }
+.ab-buttons { display: flex; gap: 8px; margin-top: 2px; }
+.ab-buttons .store-btn { flex: 1; padding: 9px 0; font-size: 7px; }
+
+@media (max-width: 480px) {
+  .tabs { grid-template-columns: repeat(3, 1fr); }
+  .ability-list { grid-template-columns: 1fr; }
+}
