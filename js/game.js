@@ -60,9 +60,14 @@ const TRAIL_ID    = window.RielCosmetics.equipped('trail').id;
 // (js/upgrades.js) are based on these numbers too.
 const PLAYER_CLASS = window.RielCosmetics.equipped('class');
 const classDamage  = () => player.gunDamage * PLAYER_CLASS.dmg;          // per bullet / pellet
-// Ability won on the gem shop wheel (js/abilities.js): { def, level, awakened, s } or null.
-// Used with E (or the touch button); see the ABILITIES section.
-const ABILITY = window.RielAbilities.equippedInfo();
+// Abilities won on the gem shop wheel (js/abilities.js): { def, level, awakened, s } or null.
+// Slot 1 is used with E, slot 2 (bought in the shop) with Q; see the ABILITIES section.
+const ABILITY  = window.RielAbilities.equippedInfo(1);
+const ABILITY2 = window.RielAbilities.equippedInfo(2);
+const ABILITY_SLOTS = [
+  { ...(ABILITY  || {}), key: 'E', cdKey: 'abilityCd',  timeKey: 'abilityTime' },
+  { ...(ABILITY2 || {}), key: 'Q', cdKey: 'ability2Cd', timeKey: 'ability2Time' },
+];
 const trailParticles = [];
 
 // Run stats shown on the death screen / campaign details. Older saves won't
@@ -316,6 +321,8 @@ const player = {
   // ability (frames): cooldown left, active effect left, Med Kit regen left
   abilityCd: 0,
   abilityTime: 0,
+  ability2Cd: 0,     // second slot (Q)
+  ability2Time: 0,
   regenTime: 0,
   // Overcharge: extra HP above max from awakened Life Leech. Normal healing can't
   // add to it; damage uses it up first. Carried between levels until it's gone.
@@ -508,7 +515,8 @@ function updatePlayer() {
 
   // Ability: E (or the touch button) uses it; timers tick here
   updateAbilityTimers();
-  if (keys['KeyE']) { keys['KeyE'] = false; useAbility(); }
+  if (keys['KeyE']) { keys['KeyE'] = false; useAbility(0); }
+  if (keys['KeyQ']) { keys['KeyQ'] = false; useAbility(1); }   // second slot
 
   // Horizontal
   let moving = false;
@@ -536,7 +544,7 @@ function updatePlayer() {
     player.isDashing = true;
     player.dashTimer  = DASH_DURATION;
     player.dashVx     = player.facingRight ? DASH_DISTANCE / DASH_DURATION : -DASH_DISTANCE / DASH_DURATION;
-    player.dashCooldown = abilityOn('adrenaline') && ABILITY.awakened ? 0 : DASH_COOLDOWN; // Rush trait: no cooldown
+    player.dashCooldown = abilityOn('adrenaline') && abilityAwake('adrenaline') ? 0 : DASH_COOLDOWN; // Rush trait: no cooldown
     keys['ArrowDown'] = false; // consume key so it doesn't retrigger
   }
 
@@ -615,7 +623,9 @@ function updatePlayer() {
   const wantShoot = keys['Space'] || mouseDown;
   if (wantShoot && player.shootTimer <= 0) {
     firePlayerBullet();
-    player.shootTimer = Math.max(4, Math.round(PLAYER_SHOOT_CD * (levelEvent.fireRateMult || 1) / (abilityOn('quickdraw') ? QUICKDRAW_FIRE : 1))); // SHOOT_COOLDOWN reduced by the Fire Rate upgrade, fast-fire event and Quick Draw
+    // Frames until the next shot: Fire Rate upgrade, fast-fire event and Quick Draw. Added to the
+    // leftover (not reset), so fractional cooldowns average out exactly and every upgrade level counts.
+    player.shootTimer += PLAYER_SHOOT_CD * (levelEvent.fireRateMult || 1) / (abilityOn('quickdraw') ? QUICKDRAW_FIRE : 1);
   }
 
   // Camera: keep player centred-ish
@@ -718,7 +728,7 @@ function firePlayerBullet() {
   }
 
   // Consume one bullet (not during awakened Quick Draw: Bottomless trait)
-  if (!(abilityOn('quickdraw') && ABILITY.awakened)) player.bullets = Math.max(0, player.bullets - 1);
+  if (!(abilityOn('quickdraw') && abilityAwake('quickdraw'))) player.bullets = Math.max(0, player.bullets - 1);
 
   const startX = player.facingRight
     ? player.x + PLAYER_W + 2
@@ -1738,8 +1748,9 @@ function goToVictory() {
 // ═══════════════════════════════════════════════════════════════
 //  ABILITIES (won on the gem shop wheel, js/abilities.js)
 // ═══════════════════════════════════════════════════════════════
-// One equipped ability, used with E. Numbers per level come from ABILITY.s; the
-// awakened trait (level 3) adds an extra effect. Cooldowns reset each level.
+// Slot 1 is used with E; slot 2 (bought for 250 gems) with Q. Each slot has its own
+// cooldown and active time. Numbers per level come from slot.s; the awakened trait
+// (level 3) adds an extra effect. Cooldowns reset each level.
 const ADRENALINE_SPEED = 1.4;  // move speed while Adrenaline is active
 const QUICKDRAW_FIRE   = 1.5;  // fire rate while Quick Draw is active
 const AWAKEN_DMG_MULT  = 1.5;  // Shield (Power Surge) and Freeze (Shatter) traits
@@ -1747,30 +1758,39 @@ const OVERCHARGE_MAX   = 0.5;  // Life Leech (Overcharge): extra HP up to 50% of
 const abilityFx = [];          // visuals: { type: 'ring' | 'bolt', ... , life, max }
 let noAbilityToastAt = -999;
 
-const abilityOn = id => !!ABILITY && ABILITY.def.id === id && player.abilityTime > 0;
+// The slot holding ability `id` (an ability can only be in one slot), or null.
+const abilitySlot = id => ABILITY_SLOTS.find(sl => sl.def && sl.def.id === id) || null;
+const abilityOn = id => { const sl = abilitySlot(id); return !!sl && player[sl.timeKey] > 0; };
+const abilityAwake = id => { const sl = abilitySlot(id); return !!sl && sl.awakened; };
 const onScreen = n => wp(n.x) > -n.w && wp(n.x) < BASE_W;
 const aliveNPCs = () => npcs.filter(n => !n.dead);
 
-function useAbility() {
+// Use the ability in slot 0 (E) or slot 1 (Q).
+function useAbility(slotIdx = 0) {
   if (gameState !== 'playing' || player.dead) return false;
-  if (!ABILITY) {
-    if (frameCount - noAbilityToastAt > 180) { noAbilityToastAt = frameCount; showToast('NO ABILITY: SPIN THE WHEEL IN THE SHOP'); }
+  const slot = ABILITY_SLOTS[slotIdx];
+  if (!slot.def) {
+    if (frameCount - noAbilityToastAt > 180) {
+      noAbilityToastAt = frameCount;
+      showToast(slotIdx === 0 ? 'NO ABILITY: SPIN THE WHEEL IN THE SHOP'
+        : window.RielAbilities.hasSlot2() ? 'NO ABILITY ON Q: EQUIP ONE IN THE SHOP' : 'Q IS THE 2ND ABILITY SLOT: BUY IT IN THE SHOP');
+    }
     return false;
   }
-  if (player.abilityCd > 0) return false;
-  const { def, s, awakened } = ABILITY;
+  if (player[slot.cdKey] > 0) return false;
+  const { def, s, awakened } = slot;
   const cx = playerCX(), cy = player.y + PLAYER_H / 2;
-  player.abilityCd = def.cd * 60;
+  player[slot.cdKey] = def.cd * 60;
   switch (def.id) {
     case 'shield':
     case 'adrenaline':
     case 'leech':
-      player.abilityTime = Math.round(s.dur * 60);
+      player[slot.timeKey] = Math.round(s.dur * 60);
       break;
     case 'quickdraw':
       player.reloadTimer = 0;
       player.bullets = MAG_SIZE;
-      player.abilityTime = Math.round(s.dur * 60);
+      player[slot.timeKey] = Math.round(s.dur * 60);
       break;
     case 'medkit': {
       const heal = player.maxHp * s.heal / 100;
@@ -1807,7 +1827,7 @@ function useAbility() {
         const to = { x: centerX(n), y: n.y + n.h / 2 };
         abilityFx.push({ type: 'bolt', x1: from.x, y1: from.y, x2: to.x, y2: to.y, color: def.color, life: 16, max: 16 });
         hitNPC(n, classDamage() * s.dmg, def.color);
-        if (n.dead && awakened) player.abilityCd = Math.max(0, player.abilityCd - 4 * 60); // Overload trait
+        if (n.dead && awakened) player[slot.cdKey] = Math.max(0, player[slot.cdKey] - 4 * 60); // Overload trait
         from = to;
       }
       break;
@@ -1818,8 +1838,10 @@ function useAbility() {
 }
 
 function updateAbilityTimers() {
-  if (player.abilityCd > 0) player.abilityCd--;
-  if (player.abilityTime > 0) player.abilityTime--;
+  for (const sl of ABILITY_SLOTS) {
+    if (player[sl.cdKey] > 0) player[sl.cdKey]--;
+    if (player[sl.timeKey] > 0) player[sl.timeKey]--;
+  }
   if (player.shieldHit > 0) player.shieldHit--;
   if (player.regenTime > 0) {
     player.regenTime--;
@@ -1831,13 +1853,11 @@ function updateAbilityTimers() {
 // traits and Life Leech apply to all of it.
 function hitNPC(n, dmg, color = '#f5c400') {
   if (n.dead) return;
-  if (ABILITY && ABILITY.awakened) {
-    if (abilityOn('shield')) dmg *= AWAKEN_DMG_MULT;                              // Power Surge
-    if (ABILITY.def.id === 'freeze' && n.frozen > 0) dmg *= AWAKEN_DMG_MULT;       // Shatter
-  }
+  if (abilityOn('shield') && abilityAwake('shield')) dmg *= AWAKEN_DMG_MULT;    // Power Surge
+  if (n.frozen > 0 && abilityAwake('freeze')) dmg *= AWAKEN_DMG_MULT;           // Shatter
   n.hp -= dmg;
   spawnDmgNumber(n.x, n.y - 4, dmg, color);
-  if (abilityOn('leech')) leechHeal(dmg * ABILITY.s.pct / 100);
+  if (abilityOn('leech')) leechHeal(dmg * abilitySlot('leech').s.pct / 100);
   alertNPC(n, true); // getting hit always gets their attention (and their friends')
   if (n.hp <= 0) killNPC(n);
 }
@@ -1846,7 +1866,7 @@ function hitNPC(n, dmg, color = '#f5c400') {
 function leechHeal(amount) {
   const room = player.maxHp - player.hp;
   player.hp = Math.min(player.maxHp, player.hp + amount);
-  if (ABILITY.awakened && amount > room) {
+  if (abilityAwake('leech') && amount > room) {
     player.overHp = Math.min(player.maxHp * OVERCHARGE_MAX, (player.overHp || 0) + amount - Math.max(0, room));
   }
 }
@@ -1869,17 +1889,19 @@ function drawAbilityFx() {
       }
     }
   }
-  if (ABILITY && player.abilityTime > 0 && !player.dead) {
+  ABILITY_SLOTS.forEach((sl, i) => {          // a ring around the player per active ability
+    if (!sl.def || player[sl.timeKey] <= 0 || player.dead) return;
     const x = wp(playerCX()), y = player.y + PLAYER_H / 2;
     const pulse = 0.35 + 0.2 * Math.sin(frameCount / 5);
-    ctx.globalAlpha = player.shieldHit > 0 ? 0.9 : pulse;
-    ctx.strokeStyle = ABILITY.def.color;
-    ctx.lineWidth = ABILITY.def.id === 'shield' ? 3 : 2;
+    const shield = sl.def.id === 'shield';
+    ctx.globalAlpha = shield && player.shieldHit > 0 ? 0.9 : pulse;
+    ctx.strokeStyle = sl.def.color;
+    ctx.lineWidth = shield ? 3 : 2;
     ctx.beginPath();
-    ctx.arc(x, y, ABILITY.def.id === 'shield' ? 22 : 19, 0, Math.PI * 2);
+    ctx.arc(x, y, (shield ? 22 : 19) + i * 4, 0, Math.PI * 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
-  }
+  });
   for (let i = abilityFx.length - 1; i >= 0; i--) {
     const f = abilityFx[i];
     const k = f.life / f.max;
@@ -1904,29 +1926,36 @@ function drawAbilityFx() {
   }
 }
 
-// HUD slot under the dash bar: icon, name, cooldown / time left, [E].
+// HUD slots under the dash bar (E, then Q): icon, name, cooldown / time left.
 function drawAbilityHUD(barX, y) {
-  if (!ABILITY) return;
-  const { def } = ABILITY;
+  let row = 0;
+  for (const sl of ABILITY_SLOTS) {
+    if (!sl.def) continue;
+    drawAbilitySlotHUD(sl, barX, y + row * 24);
+    row++;
+  }
+}
+function drawAbilitySlotHUD(sl, barX, y) {
+  const { def } = sl, cd = player[sl.cdKey], time = player[sl.timeKey];
   ctx.fillStyle = 'rgba(15,21,38,0.75)';
   ctx.fillRect(barX, y, 20, 20);
-  window.RielAbilities.drawIcon(ctx, def, barX + 2, y + 2, 2, player.abilityCd > 0 && player.abilityTime <= 0);
-  const ready = player.abilityCd <= 0;
+  window.RielAbilities.drawIcon(ctx, def, barX + 2, y + 2, 2, cd > 0 && time <= 0);
+  const ready = cd <= 0;
   const barW = 58, bx = barX + 24;
   ctx.fillStyle = '#1a1e30';
   ctx.fillRect(bx, y + 12, barW, 6);
-  if (player.abilityTime > 0) {               // active: time left
+  if (time > 0) {                             // active: time left
     ctx.fillStyle = def.color;
-    ctx.fillRect(bx, y + 12, barW * player.abilityTime / Math.round(ABILITY.s.dur * 60), 6);
+    ctx.fillRect(bx, y + 12, barW * time / Math.round(sl.s.dur * 60), 6);
   } else {
     ctx.fillStyle = ready ? '#2ecc71' : '#555577';
-    ctx.fillRect(bx, y + 12, barW * (ready ? 1 : 1 - player.abilityCd / (def.cd * 60)), 6);
+    ctx.fillRect(bx, y + 12, barW * (ready ? 1 : 1 - cd / (def.cd * 60)), 6);
   }
   ctx.font = '5px "Public Pixel", monospace';
   ctx.fillStyle = ready ? def.color : '#888870';
-  ctx.fillText(def.name + (ABILITY.awakened ? ' *' : ''), bx, y + 7);
+  ctx.fillText(def.name + (sl.awakened ? ' *' : ''), bx, y + 7);
   ctx.fillStyle = ready ? '#2ecc71' : '#888870';
-  ctx.fillText(ready ? '[E] READY' : Math.ceil(player.abilityCd / 60) + 'S', bx + barW + 4, y + 18);
+  ctx.fillText(ready ? '[' + sl.key + '] READY' : '[' + sl.key + '] ' + Math.ceil(cd / 60) + 'S', bx + barW + 4, y + 18);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3038,9 +3067,14 @@ function proceedToShop() {
     'btn-shoot': 'Space',
     'btn-dash':  'ArrowDown',
     'btn-ability': 'KeyE',
+    'btn-ability2': 'KeyQ',
   };
-  const abilityBtn = document.getElementById('btn-ability');
-  if (abilityBtn && ABILITY) { abilityBtn.hidden = false; abilityBtn.style.borderColor = ABILITY.def.color; }
+  // Ability buttons (E and Q): only shown for a slot with an ability in it
+  const abilityBtns = ABILITY_SLOTS.map((sl, i) => {
+    const el = document.getElementById(i === 0 ? 'btn-ability' : 'btn-ability2');
+    if (el && sl.def) { el.hidden = false; el.style.borderColor = sl.def.color; }
+    return el && sl.def ? el : null;
+  });
 
   function setKey(code, down) { keys[code] = down; }
 
@@ -3075,10 +3109,12 @@ function proceedToShop() {
       dashBtn.classList.remove('cooldown');
       dashBtn.textContent = 'DASH';
     }
-    if (abilityBtn && ABILITY) {             // ability button: E, or seconds left on its cooldown
-      abilityBtn.classList.toggle('cooldown', player.abilityCd > 0);
-      abilityBtn.textContent = player.abilityCd > 0 ? Math.ceil(player.abilityCd / 60) + 'S' : 'E';
-    }
+    abilityBtns.forEach((btn, i) => {         // ability buttons: E / Q, or seconds left on the cooldown
+      if (!btn) return;
+      const sl = ABILITY_SLOTS[i], cd = player[sl.cdKey];
+      btn.classList.toggle('cooldown', cd > 0);
+      btn.textContent = cd > 0 ? Math.ceil(cd / 60) + 'S' : sl.key;
+    });
     requestAnimationFrame(updateDashBtn);
   }
   requestAnimationFrame(updateDashBtn);
@@ -3124,7 +3160,7 @@ generatePowerups();
 // is cleared or the campaign falls.
 const PLAYER_SAVE_KEYS = ['x', 'y', 'vy', 'onGround', 'hp', 'maxHp', 'lives', 'gunDamage', 'bullets',
   'reloadTimer', 'facingRight', 'dead', 'deathX', 'respawnTimer', 'dashCooldown',
-  'jumpMult', 'jumpPowerTimer', 'speedMult', 'speedPowerTimer', 'abilityCd', 'abilityTime', 'regenTime', 'overHp'];
+  'jumpMult', 'jumpPowerTimer', 'speedMult', 'speedPowerTimer', 'abilityCd', 'abilityTime', 'ability2Cd', 'ability2Time', 'regenTime', 'overHp'];
 const AUTOSAVE_FRAMES = 5 * 60;
 
 // Write the campaign to the active save and to its slot in the campaign list.

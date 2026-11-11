@@ -19,8 +19,11 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   localStorage.clear(); sessionStorage.clear();
   // Older save: 3 gun upgrades bought the old way, no upgrades object.
   put({ ...base, level: 7, lives: 3, hp: 170, riels: 200, gunDamage: 8, upgradeCount: 3 });
+  localStorage.setItem('rielrunner_profile', JSON.stringify({ gems: 1234 }));
   await go('shop.html');
   let d = f.contentDocument, w = f.contentWindow;
+  ok(d.getElementById('gems-display').textContent === '1,234' && /MAIN MENU SHOP/.test(d.querySelector('.gem-strip').textContent), 'upgrade shop shows your gems (1,234), spent in the main menu shop');
+  localStorage.removeItem('rielrunner_profile');
   const card = k => d.querySelector('.btn-buy[data-key="' + k + '"]').closest('.upg-card');
   ok(d.querySelectorAll('.upg-card:not(.life-card)').length === 7 && d.querySelectorAll('.life-card').length === 1, '7 upgrade cards + the EXTRA LIFE card');
   ok(/LV 3 \/ 10/.test(card('damage').textContent) && card('damage').querySelector('.dmg-current').textContent === '8 DMG' && card('damage').querySelector('.dmg-next').textContent === '10 DMG', 'old save: 3 gun upgrades carried over (LV 3, 8 -> 10 DMG)');
@@ -61,6 +64,26 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   put({ ...base, level: 3, lives: 3, hp: 170 });
   await go('game.html'); w = f.contentWindow;
   ok(w.eval('ARMOR_BLOCK') === 0 && w.eval('PLAYER_SHOOT_CD') === 18 && w.eval('RELOAD_FRAMES') === 180 && w.eval('MAG_SIZE') === 20, 'no upgrades: unchanged base values');
+
+  // ── No hidden caps: every Fire Rate level is faster, for every class (was "15 -> 15") ──
+  const UPG = w.RielUpgrades, CLS = w.RielCosmetics.CLASSES, fr = UPG.BY_KEY.firerate;
+  const stuck = [];
+  for (const c of CLS) {
+    const p = JSON.parse(localStorage.getItem('rielrunner_profile') || '{}');
+    localStorage.setItem('rielrunner_profile', JSON.stringify({ ...p, owned: { class: CLS.map(x => x.id) }, equipped: { class: c.id } }));
+    for (let l = 0; l < UPG.MAX_LEVEL; l++) {
+      if (!(fr.value(l + 1) < fr.value(l)) || fr.format(fr.value(l + 1)) === fr.format(fr.value(l))) stuck.push(c.id + ' ' + l + '->' + (l + 1) + ' ' + fr.format(fr.value(l)));
+    }
+  }
+  ok(stuck.length === 0, 'fire rate: every level of every class shoots faster and shows a new number (' + (stuck.join(', ') || 'none stuck') + ')');
+  localStorage.setItem('rielrunner_profile', JSON.stringify({ gems: 0, owned: { class: CLS.map(x => x.id) }, equipped: { class: 'smg' } }));
+  put({ ...base, level: 3, lives: 3, hp: 170, upgrades: { firerate: 7 } });
+  await go('game.html');
+  w = f.contentWindow;
+  const cd = w.eval('PLAYER_SHOOT_CD');
+  ok(Math.abs(cd - 6 * 0.65) < 1e-9, 'SMG fire rate 7: 3.9 frames per shot (no rounding, no 4-frame cap)');
+  w.eval("applyLevelEvent(null); npcs.length = 0; campaign.shotsFired = 0; player.shootTimer = 0; keys.Space = true; for (let i = 0; i < 780; i++) { player.bullets = 999; player.reloadTimer = 0; updatePlayer(); } keys.Space = false;");
+  ok(w.eval('campaign.shotsFired') === 200, 'it really fires at 15.4 shots/s in game (' + w.eval('campaign.shotsFired') + ' shots in 13s, want 200)');
 
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });

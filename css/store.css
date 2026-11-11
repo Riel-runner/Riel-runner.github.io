@@ -337,3 +337,18 @@ body::after {
   .tabs { grid-template-columns: repeat(3, 1fr); }
   .ability-list { grid-template-columns: 1fr; }
 }
+
+/* Second ability slot (Q): buy bar, then a summary of what's on E and Q */
+.slot-bar {
+  width: 100%; max-width: 420px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px;
+  background: #0f1526;
+  border: 2px dashed #3a4466;
+}
+.slot-bar.owned { border-style: solid; border-color: #2a3a20; justify-content: center; gap: 24px; font-size: 7px; letter-spacing: 0.08em; }
+.slot-bar.owned b { display: inline-block; padding: 3px 5px; margin-right: 6px; background: #f5c400; color: #0a0e1a; font-weight: normal; }
+.slot-title { font-size: 8px; letter-spacing: 0.1em; margin-bottom: 6px; }
+.slot-note  { font-size: 6px; color: #888870; letter-spacing: 0.08em; line-height: 1.6; }
+.slot-note b { color: #f5c400; font-weight: normal; }
+.slot-buy { width: auto; flex-shrink: 0; padding: 10px 12px; font-size: 7px; }

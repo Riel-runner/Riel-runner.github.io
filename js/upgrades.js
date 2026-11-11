@@ -39,8 +39,8 @@ window.RielUpgrades = (function () {
       live: (c, step) => (c.maxHp + 15 * step) + ' MAX HP' },  // includes boss HP bonuses
     { key: 'firerate', name: 'FIRE RATE',    baseCost: 8,
       desc: 'SHOOT 5% FASTER.',
-      value: lvl => Math.max(2, Math.round(cls().fireCd * (1 - 0.05 * lvl))), // frames between shots
-      format: v => (60 / v).toFixed(1) + ' SHOTS/S' },
+      value: lvl => cls().fireCd * (1 - 0.05 * lvl),  // frames between shots (fractional: every level counts)
+      format: v => (60 / v).toFixed(60 / v < 3 ? 2 : 1) + ' SHOTS/S' },  // 2 decimals for slow guns so every level shows a change
     { key: 'ammo',     name: 'MAG SIZE',     baseCost: 6,
       desc: () => 'HOLD ' + magStep(cls()) + ' MORE BULLET' + (magStep(cls()) > 1 ? 'S' : '') + ' PER MAGAZINE.',
       value: lvl => cls().mag + magStep(cls()) * lvl,  // bullets per magazine (pistol 20 -> 70)

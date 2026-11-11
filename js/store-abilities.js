@@ -80,7 +80,9 @@ window.StoreAbilities = (function () {
   function card(def) {
     const o = A.owned(def.id), rar = A.RARITIES[def.rarity];
     const level = o ? o.level : 1, s = A.stats(def, level);
-    const equipped = o && A.equippedId() === def.id, awakened = level >= A.MAX_LEVEL;
+    const slot2 = A.hasSlot2();
+    const onE = !!o && A.equippedId(1) === def.id, onQ = !!o && A.equippedId(2) === def.id;
+    const equipped = onE || onQ, awakened = level >= A.MAX_LEVEL;
     const need = A.copiesToUpgrade(level);
     const el = document.createElement('div');
     el.className = 'ability-card r-' + def.rarity + (o ? ' owned' : ' locked') + (equipped ? ' equipped' : '') + (awakened ? ' awakened' : '');
@@ -91,8 +93,12 @@ window.StoreAbilities = (function () {
         ? '<div class="ab-copies">AWAKENED &middot; MAX LEVEL' + (o.copies ? ' &middot; ' + o.copies + ' SPARE' : '') + '</div>'
         : '<div class="ab-bar"><div style="width:' + Math.min(100, 100 * o.copies / need) + '%;background:' + rar.color + '"></div></div>' +
           '<div class="ab-copies">' + o.copies + ' / ' + need + ' COPIES TO ' + (level === 2 ? 'AWAKEN' : 'LV 2') + '</div>';
+      // One EQUIP button, or E and Q buttons once the second slot is bought
+      const eqBtn = (cls, on, label, onLabel) =>
+        '<button class="store-btn ' + cls + ' ' + (on ? 'is-equipped' : 'is-equip') + '"' + (on ? ' disabled' : '') + '>' + (on ? onLabel : label) + '</button>';
       buttons = '<div class="ab-buttons">' +
-        '<button class="store-btn ab-equip ' + (equipped ? 'is-equipped' : 'is-equip') + '"' + (equipped ? ' disabled' : '') + '>' + (equipped ? 'EQUIPPED' : 'EQUIP') + '</button>' +
+        (slot2 ? eqBtn('ab-equip', onE, 'EQUIP E', 'E: EQUIPPED') + eqBtn('ab-equip2', onQ, 'EQUIP Q', 'Q: EQUIPPED')
+               : eqBtn('ab-equip', onE, 'EQUIP', 'EQUIPPED')) +
         (awakened ? '' : '<button class="store-btn is-buy ab-upgrade"' + (A.canUpgrade(def.id) ? '' : ' disabled') + '>' + (level === 2 ? 'AWAKEN' : 'UPGRADE') + '</button>') +
         '</div>';
     } else {
@@ -108,8 +114,9 @@ window.StoreAbilities = (function () {
       '<div class="ab-trait' + (awakened ? ' on' : '') + '">' + (awakened ? '&#9733; ' : 'AWAKEN TRAIT: ') + def.trait + '</div>' +
       progress + buttons;
     A.drawIcon(el.querySelector('canvas').getContext('2d'), def, 4, 4, 4, !o);
-    const eq = el.querySelector('.ab-equip'), up = el.querySelector('.ab-upgrade');
-    if (eq) eq.addEventListener('click', () => { if (A.equip(def.id)) { renderPanel(); showToast(def.name + ' EQUIPPED'); } });
+    const eq = el.querySelector('.ab-equip'), eq2 = el.querySelector('.ab-equip2'), up = el.querySelector('.ab-upgrade');
+    if (eq) eq.addEventListener('click', () => { if (A.equip(def.id, 1)) { renderPanel(); showToast(def.name + (slot2 ? ' EQUIPPED ON E' : ' EQUIPPED')); } });
+    if (eq2) eq2.addEventListener('click', () => { if (A.equip(def.id, 2)) { renderPanel(); showToast(def.name + ' EQUIPPED ON Q'); } });
     if (up) up.addEventListener('click', () => {
       const r = A.upgrade(def.id);
       if (!r.ok) { showToast(r.reason + '!'); return; }
@@ -121,8 +128,34 @@ window.StoreAbilities = (function () {
     return el;
   }
 
+  // Second slot: buy it, or see what's on E and Q
+  function renderSlotBar() {
+    const bar = document.getElementById('slot-bar');
+    const name = slot => { const id = A.equippedId(slot); return id ? A.byId(id).name : 'EMPTY'; };
+    if (A.hasSlot2()) {
+      bar.className = 'slot-bar owned';
+      bar.innerHTML = '<span><b>E</b> ' + name(1) + '</span><span><b>Q</b> ' + name(2) + '</span>';
+      return;
+    }
+    const gems = window.RielCosmetics.gems();
+    bar.className = 'slot-bar';
+    bar.innerHTML = '<div><div class="slot-title">SECOND ABILITY SLOT</div>' +
+      '<div class="slot-note">EQUIP A 2ND ABILITY AND USE IT WITH <b>Q</b></div></div>' +
+      '<button class="store-btn is-buy slot-buy"' + (gems < A.SLOT2_COST ? ' disabled' : '') + '>BUY &middot; ' + A.SLOT2_COST + ' GEMS</button>';
+    bar.querySelector('.slot-buy').addEventListener('click', () => {
+      const r = A.buySlot2();
+      if (!r.ok) { showToast(r.reason + '!'); return; }
+      playSfx('assets/audio/sfx/upgrade.ogg', 0.55);
+      flash();
+      document.getElementById('gem-count').textContent = window.RielCosmetics.gems().toLocaleString('en-US');
+      renderPanel();
+      showToast('SECOND SLOT UNLOCKED! PRESS Q IN GAME');
+    });
+  }
+
   function renderPanel() {
     updateRollBtn();
+    renderSlotBar();
     listEl.innerHTML = '';
     const ownedFirst = A.LIST.slice().sort((a, b) => (!!A.owned(b.id) - !!A.owned(a.id)) ||
       (A.RARITY_ORDER.indexOf(b.rarity) - A.RARITY_ORDER.indexOf(a.rarity)));

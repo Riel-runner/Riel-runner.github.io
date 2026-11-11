@@ -2,11 +2,13 @@
 // Equip one and press E in game (ability button on touch). Each has a cooldown.
 // Rolling one you own adds a copy: 3 copies upgrade it to level 2, then 10 more
 // AWAKEN it (level 3), which adds its trait. Saved in the shared profile from
-// js/cosmetics.js as p.abilities = { owned: { id: { level, copies } }, equipped }.
+// js/cosmetics.js as p.abilities = { owned: { id: { level, copies } }, equipped, slot2, equipped2 }.
+// A second slot (used with Q) can be bought for SLOT2_COST gems.
 window.RielAbilities = (function () {
   const C = window.RielCosmetics;
 
   const ROLL_COST = 100;                   // gems per spin
+  const SLOT2_COST = 250;                  // gems for the second ability slot (Q)
   const UPGRADE_COPIES = [0, 3, 10];       // copies to go from level 1 -> 2, and 2 -> 3
   const MAX_LEVEL = 3;                     // level 3 = AWAKENED
   const LEVEL_NAMES = ['', 'LV 1', 'LV 2', 'AWAKENED'];
@@ -78,18 +80,22 @@ window.RielAbilities = (function () {
       o.copies = Math.max(0, Math.floor(o.copies) || 0);
     }
     if (!a.owned[a.equipped]) a.equipped = null;
+    a.slot2 = !!a.slot2;
+    if (!a.slot2 || !a.owned[a.equipped2] || a.equipped2 === a.equipped) a.equipped2 = null;
     return p;
   }
   const owned = id => profile().abilities.owned[id] || null;
-  const equippedId = () => profile().abilities.equipped;
+  // Ability in slot 1 (E) or slot 2 (Q).
+  const equippedId = (slot = 1) => { const a = profile().abilities; return slot === 2 ? a.equipped2 : a.equipped; };
+  const hasSlot2 = () => profile().abilities.slot2;
 
   // Numbers for an ability at a level (1-3).
   const stats = (def, level) => def.lv[Math.min(MAX_LEVEL, Math.max(1, level)) - 1];
   const copiesToUpgrade = level => (level >= MAX_LEVEL ? null : UPGRADE_COPIES[level]);
 
-  // The equipped ability for the game: { def, level, awakened, s } or null.
-  function equippedInfo() {
-    const p = profile(), id = p.abilities.equipped;
+  // The ability in a slot for the game: { def, level, awakened, s } or null.
+  function equippedInfo(slot = 1) {
+    const p = profile(), id = slot === 2 ? p.abilities.equipped2 : p.abilities.equipped;
     if (!id) return null;
     const def = byId(id), level = p.abilities.owned[id].level;
     return { def, level, awakened: level >= MAX_LEVEL, s: stats(def, level) };
@@ -133,12 +139,26 @@ window.RielAbilities = (function () {
     C.save(p);
     return { ok: true, level: o.level, awakened: o.level >= MAX_LEVEL };
   }
-  function equip(id) {
-    const p = profile();
-    if (!p.abilities.owned[id]) return false;
-    p.abilities.equipped = id;
+  // Put an ability in slot 1 or 2. If it's already in the other slot, the two swap.
+  function equip(id, slot = 1) {
+    const p = profile(), a = p.abilities;
+    if (!a.owned[id] || (slot === 2 && !a.slot2)) return false;
+    const key = slot === 2 ? 'equipped2' : 'equipped', other = slot === 2 ? 'equipped' : 'equipped2';
+    if (a[other] === id) a[other] = a[key] || null;
+    if (other === 'equipped2' && !a.slot2) a.equipped2 = null;
+    a[key] = id;
     C.save(p);
     return true;
+  }
+
+  function buySlot2() {
+    const p = profile();
+    if (p.abilities.slot2) return { ok: false, reason: 'ALREADY OWNED' };
+    if (p.gems < SLOT2_COST) return { ok: false, reason: 'NOT ENOUGH GEMS' };
+    p.gems -= SLOT2_COST;
+    p.abilities.slot2 = true;
+    C.save(p);
+    return { ok: true };
   }
 
   // Draw an ability's pixel icon at (x, y), S screen px per pixel.
@@ -153,6 +173,6 @@ window.RielAbilities = (function () {
     });
   }
 
-  return { ROLL_COST, UPGRADE_COPIES, MAX_LEVEL, LEVEL_NAMES, RARITIES, RARITY_ORDER, LIST, byId,
+  return { ROLL_COST, SLOT2_COST, hasSlot2, buySlot2, UPGRADE_COPIES, MAX_LEVEL, LEVEL_NAMES, RARITIES, RARITY_ORDER, LIST, byId,
            owned, equippedId, stats, copiesToUpgrade, equippedInfo, pick, roll, canUpgrade, upgrade, equip, drawIcon };
 })();

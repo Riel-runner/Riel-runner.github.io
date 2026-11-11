@@ -87,7 +87,7 @@ body::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 28px;
+  margin-bottom: 10px;
   gap: 12px;
 }
 
@@ -539,3 +539,22 @@ body::after {
 .life-card .life-preview .dmg-current,
 .life-card .life-preview .dmg-next { font-size: 12px; color: #e74c3c; letter-spacing: 0.1em; }
 .life-card .life-preview .dmg-current { color: #c0392b; }
+
+/* ── GEMS (read-only: spent in the main menu shop) ── */
+.gem-strip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 9px 14px;
+  margin-bottom: 28px;
+  border: 2px dashed #1e3a55;
+  font-size: 7px;
+  letter-spacing: 0.1em;
+}
+.gem-strip-label { color: #888870; display: flex; align-items: center; gap: 8px; }
+.gem-strip-label b { color: #5dade2; font-weight: normal; font-size: 9px; }
+.gem-dot { width: 8px; height: 8px; background: #5dade2; transform: rotate(45deg); display: inline-block; }
+.gem-strip-note { color: #444460; font-size: 6px; }

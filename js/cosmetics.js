@@ -150,7 +150,7 @@ window.RielCosmetics = (function () {
     const l = k => levels[k] || 0;
     return {
       mag:    cls.mag + magStep(cls) * l('ammo'),
-      fireCd: Math.max(2, Math.round(cls.fireCd * (1 - 0.05 * l('firerate')))),
+      fireCd: cls.fireCd * (1 - 0.05 * l('firerate')),   // fractional frames, no cap
       reload: Math.round(cls.reload * (1 - 0.07 * l('reload'))),
       speed:  cls.speed * (1 + 0.05 * l('speed')),
     };

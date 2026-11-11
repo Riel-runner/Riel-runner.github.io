@@ -229,3 +229,15 @@ body {
 }
 #btn-ability[hidden] { display: none; }
 #btn-ability.cooldown { opacity: 0.4; font-size: 9px; }
+/* Second ability slot (Q): above the E button */
+#btn-ability2 {
+  right: 160px;
+  bottom: 196px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  font-size: 11px;
+  border-width: 3px;
+}
+#btn-ability2[hidden] { display: none; }
+#btn-ability2.cooldown { opacity: 0.4; font-size: 8px; }

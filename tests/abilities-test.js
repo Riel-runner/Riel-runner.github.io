@@ -220,6 +220,47 @@ const addNPC = (x, extra = '') => E("(() => { const n = makeNPC(" + x + "); n.aw
   E("drawHUD();");
   ok(true, 'HUD draws overcharge and the ability slot without errors');
 
+  // ── Second slot (Q): buy for 250 gems, equip, use ──
+  setProf({ gems: 200, abilities: { owned: { shield: { level: 1, copies: 0 }, freeze: { level: 1, copies: 0 } }, equipped: 'shield' } });
+  await go('store.html');
+  d = f.contentDocument; W = f.contentWindow;
+  let buy = d.querySelector('#slot-bar .slot-buy');
+  ok(buy && buy.disabled && /250 GEMS/.test(buy.textContent) && !d.querySelector('.ab-equip2'), 'second slot costs 250 gems (locked with 200); no Q buttons yet');
+  ok(W.RielAbilities.equip('freeze', 2) === false, 'cannot equip slot 2 before buying it');
+  setProf({ ...prof(), gems: 300 });
+  await go('store.html');
+  d = f.contentDocument; W = f.contentWindow;
+  d.querySelector('#slot-bar .slot-buy').click();
+  await until(() => prof().abilities.slot2, 4000);
+  ok(prof().abilities.slot2 && prof().gems === 50, 'buying the second slot takes 250 gems');
+  d = f.contentDocument;
+  ok(d.querySelector('#slot-bar.owned') && /E\s*SHIELD/.test(d.getElementById('slot-bar').textContent) && /Q\s*EMPTY/.test(d.getElementById('slot-bar').textContent), 'slot bar shows E: SHIELD, Q: EMPTY');
+  ok(W.RielAbilities.buySlot2().ok === false, 'the slot can only be bought once');
+  const fc = d.querySelector('[data-id="freeze"]');
+  ok(fc.querySelector('.ab-equip') && fc.querySelector('.ab-equip2') && fc.querySelector('.ab-upgrade'), 'cards now have EQUIP E, EQUIP Q and UPGRADE buttons');
+  fc.querySelector('.ab-equip2').click();
+  await until(() => prof().abilities.equipped2 === 'freeze', 4000);
+  ok(prof().abilities.equipped === 'shield' && prof().abilities.equipped2 === 'freeze', 'EQUIP Q puts Freeze in slot 2, Shield stays on E');
+  W.RielAbilities.equip('shield', 2);
+  ok(prof().abilities.equipped === 'freeze' && prof().abilities.equipped2 === 'shield', 'equipping the E ability on Q swaps the two slots');
+  W.RielAbilities.equip('shield', 1);
+  // In game: E and Q are separate, each with its own cooldown
+  put({ ...base, level: 6 });
+  await go('game.html');
+  E("applyLevelEvent(null); npcs.length = 0; player.x = 1500; camX = player.x - BASE_W / 2; gameState = 'playing';");
+  const fq = addNPC(1530);
+  ok(E('ABILITY_SLOTS[0].def.id') === 'shield' && E('ABILITY_SLOTS[1].def.id') === 'freeze', 'game loads Shield on E and Freeze on Q');
+  E("keys.KeyQ = true; updatePlayer();");
+  ok(E('npcs[' + fq + '].frozen') === 150 && E('player.ability2Cd') === 30 * 60 && E('player.abilityCd') === 0, 'Q uses Freeze (its own 30s cooldown); E is still ready');
+  E("keys.KeyE = true; updatePlayer();");
+  ok(E('player.abilityTime') === 180 && E('player.abilityCd') === 20 * 60, 'E still uses Shield');
+  E("drawHUD();");
+  ok(true, 'HUD draws both slots');
+  setProf({ gems: 0, abilities: { owned: { shield: { level: 1, copies: 0 } }, equipped: 'shield' } });
+  await go('game.html');
+  E("gameState = 'playing'; toastTimer2 = 0; keys.KeyQ = true; updatePlayer();");
+  ok(/BUY IT IN THE SHOP/.test(E('toastMsg')), 'Q without the second slot: hint to buy it');
+
   // ── Saved mid-level, touch button ──
   await arena('shield', 1, { overHp: 25 });
   ok(E('player.overHp') === 25, 'overcharge carries into the next level');
@@ -230,6 +271,10 @@ const addNPC = (x, extra = '') => E("(() => { const n = makeNPC(" + x + "); n.aw
   await go('game.html');
   const tb = f.contentDocument.getElementById('btn-ability');
   ok(tb && !tb.hidden, 'touch controls show the ability button when one is equipped');
+  ok(f.contentDocument.getElementById('btn-ability2').hidden, 'no second slot: no Q touch button');
+  setProf({ gems: 0, abilities: { owned: { shield: { level: 1, copies: 0 }, freeze: { level: 1, copies: 0 } }, equipped: 'shield', slot2: true, equipped2: 'freeze' } });
+  await go('game.html');
+  ok(!f.contentDocument.getElementById('btn-ability2').hidden, 'second slot equipped: Q touch button shown');
   setProf({ gems: 0 });
   await go('game.html');
   ok(f.contentDocument.getElementById('btn-ability').hidden, 'no ability: no touch ability button');
