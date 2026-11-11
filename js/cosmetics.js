@@ -113,6 +113,13 @@ window.RielCosmetics = (function () {
     const { _s, ...rest } = p;
     return { p: rest, state: _s === sign(JSON.stringify(rest)) ? 'ok' : 'bad' };
   }
+  function penalize(saved) {
+    const p = { ...saved, gems: 0 };
+    p.owned = { ...(p.owned || {}), class: [DEFAULTS.class] };
+    p.equipped = { ...(p.equipped || {}), class: DEFAULTS.class };
+    delete p.abilities;
+    return p;
+  }
   function readProfile() {
     const main = readSigned(PROFILE_KEY);
     if (main.state === 'ok' || main.state === 'none') return main.p;
@@ -121,10 +128,11 @@ window.RielCosmetics = (function () {
     // Old save from before the protection (no signature): accepted until LEGACY_UNTIL, then signed.
     if (main.state === 'unsigned' && !guarded && Date.now() < LEGACY_UNTIL) { write(main.p); return main.p; }
     // Edited outside the game (cheating): go back to the last real save from the signed
-    // backup but take away ALL gems as a penalty; if the backup was edited too, start over.
+    // backup, but as a penalty take away ALL gems, every bought ability (and the 2nd slot) and
+    // every class except the free default. If the backup was edited too, start over.
     const backup = readSigned(BACKUP_KEY);
     try { localStorage.setItem(TAMPER_KEY, backup.state === 'ok' ? 'penalty' : 'reset'); } catch {}
-    const p = backup.state === 'ok' ? { ...backup.p, gems: 0 } : {};
+    const p = backup.state === 'ok' ? penalize(backup.p) : {};
     write(p);
     return p;
   }

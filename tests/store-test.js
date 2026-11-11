@@ -109,14 +109,17 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   await go('store.html');
   ok(f.contentDocument.getElementById('gem-count').textContent === '0' && raw().gems === 0, 'gems edited in storage: caught, and as a penalty ALL gems are taken away (0)');
   await go('index.html');
-  ok(/CHEATING DETECTED.*ALL YOUR GEMS WERE TAKEN AWAY/.test((f.contentDocument.querySelector('.tamper-note') || {}).textContent || ''), 'title screen says cheating was detected and the gems were taken');
+  ok(/CHEATING DETECTED.*ALL YOUR GEMS, ABILITIES AND CLASSES WERE TAKEN AWAY/.test((f.contentDocument.querySelector('.tamper-note') || {}).textContent || ''), 'title screen says cheating was detected and gems, abilities and classes were taken');
   await go('index.html');
   ok(!f.contentDocument.querySelector('.tamper-note'), 'that notice only shows once');
-  setProfile({ gems: 100, owned: { class: ['gunner', 'smg'] }, equipped: { class: 'smg' } });   // a real save with a bought class
+  setProfile({ gems: 100, owned: { class: ['gunner', 'smg', 'sniper'], weapon: ['standard', 'gold'] }, equipped: { class: 'smg', weapon: 'gold' }, abilities: { owned: { shield: { level: 1, copies: 0 }, leech: { level: 2, copies: 3 } }, equipped: 'leech', slot2: true, equipped2: 'shield' } });   // a real save with bought classes, a skin and abilities
   await go('store.html');
   edit('rielrunner_profile', p => { delete p._s; p.gems = 50000; });   // remove the signature too
   await go('store.html');
-  ok(raw().gems === 0 && f.contentWindow.RielCosmetics.owns('class', 'smg'), 'removing the signature does not work either: gems gone, the bought class kept');
+  ok(raw().gems === 0, 'removing the signature does not work either: gems gone');
+  ok(!f.contentWindow.RielCosmetics.owns('class', 'smg') && !f.contentWindow.RielCosmetics.owns('class', 'sniper') && f.contentWindow.RielCosmetics.owns('class', 'gunner') && f.contentWindow.RielCosmetics.equipped('class').id === 'gunner', 'cheat penalty: every bought class is deleted, only the free GUNNER is left (and equipped)');
+  ok(!Object.keys((raw().abilities || {}).owned || {}).length && !f.contentWindow.RielAbilities.hasSlot2() && !f.contentWindow.RielAbilities.equippedInfo(1), 'cheat penalty: every ability and the 2nd ability slot are deleted');
+  ok(f.contentWindow.RielCosmetics.owns('weapon', 'gold'), 'cheat penalty: skins are kept');
   edit('rielrunner_profile', p => { p.gems = 77777; });
   edit('rielrunner_profile_b', p => { p.gems = 77777; });      // edit the backup as well
   await go('store.html');

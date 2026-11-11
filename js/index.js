@@ -238,7 +238,7 @@ if(bestRiels) document.getElementById('best-riels').textContent = bestRiels + ' 
   if (!t) return;
   const note = document.createElement('div');
   note.className = 'tamper-note';
-  note.textContent = t === 'penalty' ? 'CHEATING DETECTED: SAVE DATA WAS EDITED OUTSIDE THE GAME. ALL YOUR GEMS WERE TAKEN AWAY.'
+  note.textContent = t === 'penalty' ? 'CHEATING DETECTED: SAVE DATA WAS EDITED OUTSIDE THE GAME. ALL YOUR GEMS, ABILITIES AND CLASSES WERE TAKEN AWAY.'
                                      : 'CHEATING DETECTED: SAVE DATA WAS EDITED OUTSIDE THE GAME, SO IT WAS RESET.';
   document.querySelector('.stat-row').after(note);
 })();
