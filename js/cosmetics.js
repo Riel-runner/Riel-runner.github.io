@@ -85,6 +85,11 @@ window.RielCosmetics = (function () {
   // abilities are kept. Bump SHOP_WIPE to do it again.
   const SHOP_WIPE = 1;
   const WIPE_NOTE_KEY = 'rielrunner_wiped';      // 'shop reset' notice, shown once
+  // Test copy only (user asked 2026-11-11, to test classes): a save on Live Server
+  // (localhost:5500) gets 9,999,999 gems once. Saves are kept per website address, so
+  // this never reaches anyone's save on the real site.
+  const TEST_GEMS = 9999999;
+  const isTestCopy = () => /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.port === '5500';
   const LEGACY_UNTIL = Date.UTC(2026, 10, 18);    // unsigned (pre-protection) saves accepted until Nov 18, 2026
   // Writing saves and giving gems only works with KEY. Each game script claims it while
   // the page is still loading (claim() returns null afterwards), so the same calls typed
@@ -162,6 +167,11 @@ window.RielCosmetics = (function () {
       p.wipe = SHOP_WIPE;
       write(p);
       if (had) try { localStorage.setItem(WIPE_NOTE_KEY, '1'); } catch {}
+    }
+    if (!p.testGems && isTestCopy()) {
+      p.gems = Math.max(p.gems, TEST_GEMS);
+      p.testGems = 1;
+      write(p);
     }
     for (const c of CATEGORIES) {
       const owned = new Set(Array.isArray(p.owned[c]) ? p.owned[c] : []);
