@@ -3323,8 +3323,10 @@ function loop() {
 
 requestAnimationFrame(loop);
 
-// Game music starts from the beginning on every level and loops continuously.
-const gameMusic = new Audio('assets/audio/music/game-music.flac');
+// Game music: each zone has its own track (assets/audio/music/game-music-<area>.flac).
+// It starts from the beginning on every level and loops continuously.
+const ZONE_MUSIC = { ice: 'ice', grass: 'dirt', lava: 'lava', sky: 'sky', space: 'space' };
+const gameMusic = new Audio('assets/audio/music/game-music-' + (ZONE_MUSIC[THEME.id] || 'ice') + '.flac');
 gameMusic.loop = true;
 window.RielVolume.bindMusic(gameMusic, 0.50); // Sound effects use 0.55, so they sit slightly above the music.
 gameMusic.play().catch(() => {});

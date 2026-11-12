@@ -1,5 +1,5 @@
 // Zone hazards (js/hazards.js): 50% roll per level matching the zone, each hazard's
-// warning + damage rules, and that the hazard is saved with the level.
+// warning + damage rules, that the hazard is saved with the level, and each zone's music track.
 // Usage: node hazards-test.js <repoDir> <chromeExe>
 const http = require('http'), fs = require('fs'), path = require('path'), os = require('os');
 const { execFile } = require('child_process');
@@ -20,6 +20,13 @@ const put = c => { localStorage.setItem('rielrunner_campaigns', JSON.stringify([
   put({ ...base, level: 25 });
   await go('game.html');
   const w = f.contentWindow, E = js => w.eval(js), J = js => JSON.parse(E(js));
+
+  // ── Each zone plays its own music track ──
+  ok(/game-music-dirt\.flac$/.test(w.eval('gameMusic.src')), 'grassy field level plays game-music-dirt.flac');
+  const tracks = J("JSON.stringify([5, 25, 45, 65, 85].map(L => 'assets/audio/music/game-music-' + ZONE_MUSIC[window.RielThemes.forLevel(L).id] + '.flac'))");
+  const found = [];
+  for (const t of tracks) { const r = await fetch(t, { method: 'HEAD' }); found.push(r.ok); }
+  ok(tracks.join() === ['ice', 'dirt', 'lava', 'sky', 'space'].map(a => 'assets/audio/music/game-music-' + a + '.flac').join() && found.every(Boolean), 'ice, grass (dirt), lava, sky and space each have their own music file, and every file exists');
 
   // ── The roll: about half the levels, always the zone's own hazard ──
   const roll = J("(() => { const out = {}; const lvl0 = campaign.level; for (const L of [5, 25, 45, 65, 85, 1, 2, 10, 50]) { campaign.level = L; let n = 0; const ids = new Set(); for (let k = 0; k < 400; k++) { const h = pickZoneHazard(); if (h) { n++; ids.add(h.id); } } out[L] = { n, ids: [...ids] }; } campaign.level = lvl0; zoneHazard = null; return JSON.stringify(out); })()");
