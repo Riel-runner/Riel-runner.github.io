@@ -87,8 +87,9 @@ window.RielCosmetics = (function () {
   const WIPE_NOTE_KEY = 'rielrunner_wiped';      // 'shop reset' notice, shown once
   // Test copy only (user asked 2026-11-11, to test classes): a save on Live Server
   // (localhost:5500) gets 9,999,999 gems once. Saves are kept per website address, so
-  // this never reaches anyone's save on the real site.
+  // this never reaches anyone's save on the real site. Also 10 Draco the Dragon pets, once.
   const TEST_GEMS = 9999999;
+  const TEST_DRAGONS = 10;
   const isTestCopy = () => /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.port === '5500';
   const LEGACY_UNTIL = Date.UTC(2026, 10, 18);    // unsigned (pre-protection) saves accepted until Nov 18, 2026
   // Writing saves and giving gems only works with KEY. Each game script claims it while
@@ -172,6 +173,16 @@ window.RielCosmetics = (function () {
     if (!p.testGems && isTestCopy()) {
       p.gems = Math.max(p.gems, TEST_GEMS);
       p.testGems = 1;
+      write(p);
+    }
+    if (!p.testDragons && isTestCopy()) {              // + 10 DRACO THE DRAGONs (same as winning it 10 times)
+      const pets = p.pets = p.pets || {};
+      pets.owned = pets.owned || {};
+      const d = pets.owned.dragon;
+      if (d) d.copies = (Math.floor(d.copies) || 0) + TEST_DRAGONS;
+      else pets.owned.dragon = { level: 1, copies: TEST_DRAGONS - 1 };
+      if (!pets.equipped) pets.equipped = 'dragon';
+      p.testDragons = 1;
       write(p);
     }
     for (const c of CATEGORIES) {
