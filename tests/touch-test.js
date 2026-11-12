@@ -5,7 +5,11 @@ const { execFile } = require('child_process');
 const [repo, chrome] = process.argv.slice(2);
 
 const harness = `<!doctype html><html><head><style>html,body{margin:0}iframe{border:0;width:960px;height:600px}</style></head>
-<body><pre id="out">running</pre><iframe id="f"></iframe><script>
+<body><pre id="out">running</pre><iframe id="f"></iframe><script src="js/cosmetics.js"></script><script>
+const _rawSet = Storage.prototype.setItem;
+const _seal = window.RielCosmetics.withKey(window.RielCosmetics.claim());
+let _sealing = false;
+Storage.prototype.setItem = function (k, v) { if (k === 'rielrunner_profile' && !_sealing) { let o = null; try { o = JSON.parse(v); } catch {} if (o && typeof o === 'object') { _sealing = true; try { _seal.save(Object.assign({ wipe: 1 }, o)); } finally { _sealing = false; } return; } } _rawSet.call(this, k, v); };
 const f = document.getElementById('f'), log = [];
 const ok = (c, m) => log.push((c ? 'PASS ' : 'FAIL ') + m);
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -74,6 +78,34 @@ function setTouch(on) {
   ok(w.eval('gameState') === 'paused', 'tapping the pause button pauses');
   ptr(cv2, 'pointerdown', rx, ry, 'touch');
   ok(w.eval('gameState') === 'playing', 'tapping RESUME on touchscreen resumes');
+
+  // Abilities on touch: E and Q buttons show for equipped slots and a quick tap uses them
+  localStorage.setItem('rielrunner_profile', JSON.stringify({ gems: 0, abilities: { owned: { shield: { level: 1, copies: 0 }, quickdraw: { level: 1, copies: 0 } }, equipped: 'shield', slot2: true, equipped2: 'quickdraw' } }));
+  setTouch(true); await go('game.html');
+  d = f.contentDocument; w = f.contentWindow;
+  w.eval('applyLevelEvent(null)');
+  const bE = d.getElementById('btn-ability'), bQ = d.getElementById('btn-ability2');
+  ok(!bE.hidden && !bQ.hidden && bE.getBoundingClientRect().width > 0 && bQ.getBoundingClientRect().width > 0, 'touch: E and Q ability buttons are shown when abilities are equipped');
+  ok(w.eval('gameState') === 'playing', 'touch ability test: game is playing (' + w.eval('gameState') + ')');
+  ptr(bE, 'pointerdown', undefined, undefined, 'touch'); ptr(bE, 'pointerup', undefined, undefined, 'touch');
+  w.eval('updatePlayer()');
+  ok(w.eval('player.abilityCd') > 0, 'touch: a quick tap on E uses the ability (cooldown ' + w.eval('player.abilityCd') + ')');
+  ptr(bQ, 'pointerdown', undefined, undefined, 'touch'); ptr(bQ, 'pointerup', undefined, undefined, 'touch');
+  w.eval('updatePlayer()');
+  ok(w.eval('player.ability2Cd') > 0, 'touch: a quick tap on Q uses the 2nd ability (cooldown ' + w.eval('player.ability2Cd') + ')');
+  const vis = [...d.querySelectorAll('#touch-overlay .t-btn')].filter(b => !b.hidden).map(b => [b.id, b.getBoundingClientRect()]);
+  const hit = [];
+  for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) { const a = vis[i][1], b = vis[j][1]; if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) hit.push(vis[i][0] + '/' + vis[j][0]); }
+  ok(!hit.length, 'touch: no buttons overlap ' + hit.join(' '));
+  ok(vis.every(([, r]) => r.left >= 0 && r.top >= 0 && r.right <= w.innerWidth && r.bottom <= w.innerHeight), 'touch: every button is on screen');
+  for (const [pw, ph] of [[740, 360], [667, 375], [568, 320]]) {
+    f.style.width = pw + 'px'; f.style.height = ph + 'px'; await wait(300);
+    const v2 = [...d.querySelectorAll('#touch-overlay .t-btn')].filter(b => !b.hidden).map(b => [b.id, b.getBoundingClientRect()]);
+    const h2 = [];
+    for (let i = 0; i < v2.length; i++) for (let j = i + 1; j < v2.length; j++) { const a = v2[i][1], b = v2[j][1]; if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) h2.push(v2[i][0] + '/' + v2[j][0]); }
+    ok(!h2.length && v2.every(([, r]) => r.left >= 0 && r.top >= 0 && r.right <= pw && r.bottom <= ph), 'touch: phone sideways ' + pw + 'x' + ph + ': all buttons on screen, none overlap ' + h2.join(' '));
+  }
+  f.style.width = ''; f.style.height = '';
 
   document.getElementById('out').textContent = log.join('\\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\\n') + '\\nERROR ' + e.stack; });

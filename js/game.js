@@ -3078,8 +3078,6 @@ function proceedToShop() {
     'btn-jump':  'ArrowUp',
     'btn-shoot': 'Space',
     'btn-dash':  'ArrowDown',
-    'btn-ability': 'KeyE',
-    'btn-ability2': 'KeyQ',
   };
   // Ability buttons (E and Q): only shown for a slot with an ability in it
   const abilityBtns = ABILITY_SLOTS.map((sl, i) => {
@@ -3106,6 +3104,17 @@ function proceedToShop() {
     el.addEventListener('pointerup', release);
     el.addEventListener('pointercancel', release);
     el.addEventListener('lostpointercapture', release);
+  });
+
+  // Ability buttons use the ability the moment they're tapped. (Holding a key down like the
+  // other buttons missed quick taps: down and up could both land between two frames.)
+  abilityBtns.forEach((el, i) => {
+    if (!el) return;
+    el.addEventListener('pointerdown', e => { e.preventDefault(); el.classList.add('pressed'); useAbility(i); });
+    const release = () => el.classList.remove('pressed');
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('pointerleave', release);
   });
 
   // (The pause button is drawn on the game canvas, top-right, for everyone: see drawPauseButton.)
