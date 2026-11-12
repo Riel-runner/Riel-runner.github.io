@@ -2054,8 +2054,13 @@ function drawPet() {
       if ((frameCount + i * 7) % 24 < 16) ctx.fillRect(Math.round(sx + w / 2 + Math.cos(a) * (w * 0.7)), Math.round(sy + h / 2 + Math.sin(a) * (h * 0.6)), 2, 2);
     }
   }
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';        // little shadow under it
-  ctx.fillRect(sx + 3, sy + h + 3, w - 6, 2);
+  // Pets fly, so the shadow sits on the floor (or platform) below, smaller and fainter the higher it is
+  let floor = GROUND_Y;
+  for (const p of platforms) if (pet.x >= p.x && pet.x <= p.x + p.w && p.y >= pet.y + h / 2 && p.y < floor) floor = p.y;
+  const lift = Math.max(0, Math.min(1, (floor - (pet.y + h / 2)) / 120));
+  const sw = Math.max(4, Math.round((w - 4) * (1 - lift * 0.5)));
+  ctx.fillStyle = 'rgba(0,0,0,' + (0.28 - lift * 0.14).toFixed(2) + ')';
+  ctx.fillRect(Math.round(wp(pet.x) - sw / 2), floor - 2, sw, 2);
   window.RielPets.draw(ctx, def, sx, sy, PET_SCALE, { flip: !player.facingRight });
   for (const s of petShots) {                // fireballs
     const fx = Math.round(wp(s.x)), fy = Math.round(s.y);

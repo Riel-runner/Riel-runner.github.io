@@ -202,6 +202,8 @@ const hitFor = (i, hp, dmg) => { E("npcs[" + i + "].hp = " + hp + "; hitNPC(npcs
   ok(Math.abs(E('pet.x') - E('player.x')) < 40, 'the pet follows you around');
   const drew = E("(() => { let n = 0; const fr = ctx.fillRect; ctx.fillStyle = '#000'; ctx.fillRect = function () { if (String(ctx.fillStyle).toLowerCase() === PET.def.color) n++; return fr.apply(this, arguments); }; try { camX = player.x - 300; drawPet(); } finally { ctx.fillRect = fr; } return n; })()");
   ok(drew > 10, 'the pet is drawn next to you (' + drew + ' pixels in its colour)');
+  const sh = JSON.parse(E("(() => { const r = []; const fr = ctx.fillRect; ctx.fillRect = function (x, y, w, h) { if (String(ctx.fillStyle).replace(/ /g, '').indexOf('rgba(0,0,0,') === 0) r.push(y + h); return fr.apply(this, arguments); }; try { platforms.length = 0; player.y = GROUND_Y - PLAYER_H; for (let k = 0; k < 60; k++) updatePet(); drawPet(); } finally { ctx.fillRect = fr; } return JSON.stringify({ r, petBottom: pet.y + PET.def.art.length * PET_SCALE / 2, ground: GROUND_Y }); })()"));
+  ok(sh.r.length === 1 && Math.abs(sh.r[0] - sh.ground) < 1 && sh.petBottom < sh.ground - 10, 'the flying pet casts its shadow on the floor below it, not in the air under it');
 
   // ── Saved with the level ──
   await arena('turtle', 3);
