@@ -161,6 +161,7 @@ const NPC_DETECT_R   = 275;          // px — when NPC starts walking
 const CONTACT_DAMAGE = 0.5;          // hp per frame while touching NPC
 const LASER_TICK_PC  = 0.10;         // 10% max hp per 0.5s from lasers (chunk 5)
 const LASER_TICK_INT = 30;           // frames between laser ticks
+const GUN_REACH      = (window.RielCosmetics.equipped('class').reach) || 520;   // px a bullet flies (class range)
 const SHOOT_COOLDOWN = 18;           // frames (~0.3s at 60fps)
 const BULLET_SPEED   = 10;
 const PIXEL          = 3;            // sprite pixel scale
@@ -812,10 +813,11 @@ function firePlayerBullet() {
   if (settings.autoAim && !levelEvent.forceManualAim) {
     // Find closest NPC
     let closest = null, bestDist = Infinity;
+    // Only enemies your gun can reach (an SMG won't waste shots on enemies far off screen)
     for (const n of npcs) {
       if (n.dead) continue;
       const d = Math.hypot(n.x - player.x, n.y - player.y);
-      if (d < bestDist) { bestDist = d; closest = n; }
+      if (d < bestDist && d <= GUN_REACH) { bestDist = d; closest = n; }
     }
     if (closest) {
       const tx = closest.x + 10 - startX;
@@ -845,7 +847,7 @@ function firePlayerBullet() {
     bullets.push({ x: startX, y: startY, dx: dx * ca - dy * sa, dy: dx * sa + dy * ca, alive: true,
                    speed: PLAYER_CLASS.bulletSpeed || BULLET_SPEED,   // sniper bullets fly faster
                    pierce: !!PLAYER_CLASS.pierce, hits: [],          // sniper: goes through enemies
-                   life: PLAYER_CLASS.range || 0,                    // shotgun: short range
+                   dist: 0, reach: GUN_REACH,                        // flies this far (class range)
                    sharp });
   }
   addStat('shotsFired', pellets);
@@ -861,7 +863,6 @@ function firePlayerBullet() {
 function updateBullets() {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
-    if (b.life && --b.life <= 0) { bullets.splice(i, 1); continue; } // shotgun range
 
     const prevX = b.x;
     const prevY = b.y;
@@ -899,10 +900,12 @@ function updateBullets() {
 
     if (removed) continue;
 
-    // Remove bullets as soon as they leave the viewport (prevent camping)
-    const leftBound = camX - 10;
-    const rightBound = camX + BASE_W + 10;
-    if (b.x < leftBound || b.x > rightBound || b.y < 0 || b.y > BASE_H || !b.alive) {
+    // Range: a bullet flies as far as its gun reaches (SMG: about what you can see; sniper:
+    // far off screen). Bullets without a reach (older saves) stop at the screen edge.
+    b.dist = (b.dist || 0) + Math.hypot(stepX, stepY);
+    const gone = b.reach ? b.dist >= b.reach || b.x < 0 || b.x > LEVEL_WIDTH
+                         : b.x < camX - 10 || b.x > camX + BASE_W + 10;
+    if (gone || b.y < 0 || b.y > BASE_H || !b.alive) {
       bullets.splice(i, 1);
     }
   }
@@ -2698,11 +2701,29 @@ function drawBullets() {
     ctx.save();
     ctx.translate(wp(b.x), b.y + 1.5);
     ctx.rotate(bulletAngle(b));
+    if (b.reach && b.dist > b.reach * 0.8) ctx.globalAlpha = Math.max(0, (b.reach - b.dist) / (b.reach * 0.2));   // fades out at the end of its range
     ctx.fillStyle = WEAPON_SKIN.glow;      // trail (behind)
     ctx.fillRect(-12, -1.5, 8, 3);
     ctx.fillStyle = WEAPON_SKIN.bullet;    // bullet (pointing forward)
     ctx.fillRect(-4, -1.5, 10, 3);
     ctx.restore();
+  }
+}
+
+// Long-range guns (rifle, sniper) can hit enemies off screen: a red marker at the screen edge
+// shows each one in range, at its height, so you know where to shoot.
+function drawReachMarkers() {
+  if (GUN_REACH <= BASE_W * 0.65 || player.dead) return;
+  for (const n of npcs) {
+    if (n.dead) continue;
+    const sx = wp(n.x);
+    if (sx + n.w >= 0 && sx <= BASE_W) continue;                     // on screen: you can see it
+    if (Math.hypot(n.x - player.x, n.y - player.y) > GUN_REACH) continue;
+    const right = sx > BASE_W, x = right ? BASE_W - 9 : 3;
+    const y = Math.round(Math.max(40, Math.min(GROUND_Y - 8, n.y + n.h / 2 - 3)));
+    const blink = frameCount % 30 < 20;
+    ctx.fillStyle = n.isBoss ? '#f5c400' : blink ? '#ff4d4d' : '#a82a2a';
+    for (let i = 0; i < 4; i++) ctx.fillRect(right ? x + i : x + 3 - i, y + i, 2, 6 - i * 2 > 0 ? 6 - i * 2 : 1);   // arrow pointing off screen
   }
 }
 
@@ -3438,6 +3459,7 @@ function loop() {
   updateDrawDroppedMags();
   drawPowerups();
   drawNPCs();
+  drawReachMarkers();
   drawAbilityFx();
   drawEnemyShots();
   drawBlasts();

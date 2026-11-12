@@ -68,6 +68,7 @@ function classStatsHtml(c) {
     ['FIRE',   (60 / c.fireCd).toFixed(1) + '/S'],
     ['RELOAD', (c.reload / 60).toFixed(1) + 'S'],
     ['SPEED',  Math.round(c.speed * 100) + '%'],
+    ['RANGE',  C.rangeLabel(c.reach || 520)],
   ];
   return '<div class="class-weapon">' + c.weapon + (c.pierce ? ' &middot; PIERCES' : '') + '</div>' +
     '<div class="class-stats">' + rows.map(([k, v]) => '<div><span>' + k + '</span><b>' + v + '</b></div>').join('') + '</div>' +

@@ -78,6 +78,27 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   ok(E('bullets.length') === 5 && E('new Set(bullets.map(b => b.dy.toFixed(3))).size') === 5, 'shotgun fires 5 pellets in a spread');
   E('for (let i = 0; i < 30; i++) updateBullets();');
   ok(E('bullets.length') === 0, 'pellets disappear after their short range');
+  // Range: fast guns reach about what you can see, rifles and snipers far off screen
+  const R = JSON.parse(E("JSON.stringify(Object.fromEntries(window.RielCosmetics.CLASSES.map(c => [c.id, c.reach])))"));
+  ok(R.shotgun < R.smg && R.smg < R.gunner && R.gunner < R.rifleman && R.rifleman < R.sniper, 'gun range: shotgun ' + R.shotgun + ' < SMG ' + R.smg + ' < pistol ' + R.gunner + ' < rifle ' + R.rifleman + ' < sniper ' + R.sniper);
+  ok(R.smg < E('BASE_W * 0.65') && R.assault <= E('BASE_W * 0.65') && R.rifleman > E('BASE_W') && R.sniper >= 1500, 'SMG and AK only reach what is on screen; rifle and sniper reach far past it');
+  ok(E("window.RielCosmetics.rangeLabel(" + R.smg + ")") === 'SHORT' && E("window.RielCosmetics.rangeLabel(" + R.sniper + ")") === 'EXTREME' && E("window.RielCosmetics.rangeLabel(" + R.shotgun + ")") === 'VERY SHORT', 'shop shows the range: SMG SHORT, sniper EXTREME, shotgun VERY SHORT');
+  const flyTest = "(() => { applyLevelEvent(null); zoneHazard = null; npcs.length = 0; bullets.length = 0; platforms.length = 0; settings.autoAim = true; player.x = 1000; player.y = GROUND_Y - PLAYER_H; player.facingRight = true; camX = player.x - BASE_W * 0.35; player.reloadTimer = 0; player.bullets = 30; firePlayerBullet(); const b = bullets[0], x0 = b.x; let far = 0; for (let k = 0; k < 400 && bullets.includes(b); k++) { updateBullets(); far = b.x - x0; } return Math.round(far); })()";
+  setProf({ gems: 0, owned: { class: ['gunner', 'smg', 'sniper'] }, equipped: { class: 'smg' } });
+  put({ ...base, name: 'RG', level: 3, lives: 3, hp: 170, gunDamage: 2 });
+  await go('game.html');
+  const smgFar = E(flyTest);
+  ok(Math.abs(smgFar - R.smg) <= 12 && smgFar < E('BASE_W * 0.65'), 'SMG bullets stop after ' + smgFar + 'px, before the edge of the screen');
+  E("applyLevelEvent(null); zoneHazard = null; npcs.length = 0; bullets.length = 0; settings.autoAim = true; const n = makeNPC(player.x + 700); n.nextDodgeRoll = 1e9; npcs.push(n); player.reloadTimer = 0; player.bullets = 30; player.facingRight = true; firePlayerBullet();");
+  ok(E('bullets[0].dx') === 1 && E('bullets[0].dy') === 0, 'SMG auto-aim ignores an enemy out of its reach and fires straight ahead');
+  ok(E("(() => { let n = 0; const fr = ctx.fillRect; ctx.fillRect = function () { n++; return fr.apply(this, arguments); }; try { drawReachMarkers(); } finally { ctx.fillRect = fr; } return n; })()") === 0, 'SMG: no off-screen enemy markers');
+  setProf({ gems: 0, owned: { class: ['gunner', 'smg', 'sniper'] }, equipped: { class: 'sniper' } });
+  await go('game.html');
+  const snFar = E(flyTest);
+  ok(snFar >= R.sniper - 20, 'sniper bullets fly ' + snFar + 'px, far past the screen');
+  E("applyLevelEvent(null); zoneHazard = null; npcs.length = 0; bullets.length = 0; platforms.length = 0; settings.autoAim = true; player.x = 1000; player.y = GROUND_Y - PLAYER_H; camX = player.x - BASE_W * 0.35; const n = makeNPC(2500); n.nextDodgeRoll = 1e9; n.hp = n.maxHp = 1e6; npcs.push(n); window.__sh = n.hp; player.reloadTimer = 0; player.bullets = 5; firePlayerBullet(); for (let k = 0; k < 200 && bullets.length; k++) { updateBullets(); updateNPCs(); }");
+  ok(E('wp(npcs[0].x)') > E('BASE_W') && E('npcs[0].hp') < E('__sh'), 'sniper auto-aims at an enemy 1500px away (off screen) and hits it');
+  ok(E("(() => { let n = 0; const fr = ctx.fillRect; ctx.fillRect = function () { n++; return fr.apply(this, arguments); }; try { drawReachMarkers(); } finally { ctx.fillRect = fr; } return n; })()") > 0, 'sniper: a red marker at the screen edge shows the off-screen enemy in range');
 
   // Each class has its own gun sprite
   ok(E("new Set(window.RielCosmetics.CLASSES.map(c => c.gun.length + ':' + c.muzzle)).size") === 6, 'every class has a different gun sprite');
@@ -113,6 +134,6 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(0, () => execFile(chrome, ['--headless=new', '--disable-gpu', '--no-first-run',
-  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=20000', '--dump-dom',
+  `--user-data-dir=${fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'))}`, '--virtual-time-budget=40000', '--dump-dom',
   `http://127.0.0.1:${server.address().port}/h.html`], { maxBuffer: 1 << 24 }, (e, o) => {
   const m = (o || '').match(/<pre id="out">([\s\S]*?)<\/pre>/); console.log(m ? m[1] : 'no result'); server.close(); }));
