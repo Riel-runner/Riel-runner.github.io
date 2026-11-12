@@ -83,7 +83,7 @@ function setTouch(on) {
   localStorage.setItem('rielrunner_profile', JSON.stringify({ gems: 0, abilities: { owned: { shield: { level: 1, copies: 0 }, quickdraw: { level: 1, copies: 0 } }, equipped: 'shield', slot2: true, equipped2: 'quickdraw' } }));
   setTouch(true); await go('game.html');
   d = f.contentDocument; w = f.contentWindow;
-  w.eval('applyLevelEvent(null)');
+  w.eval('applyLevelEvent(null); zoneHazard = null');
   const bE = d.getElementById('btn-ability'), bQ = d.getElementById('btn-ability2');
   ok(!bE.hidden && !bQ.hidden && bE.getBoundingClientRect().width > 0 && bQ.getBoundingClientRect().width > 0, 'touch: E and Q ability buttons are shown when abilities are equipped');
   ok(w.eval('gameState') === 'playing', 'touch ability test: game is playing (' + w.eval('gameState') + ')');

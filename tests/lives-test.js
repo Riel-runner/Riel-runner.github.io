@@ -43,7 +43,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   put({ ...base, level: 59, lives: 3, hp: 170 });
   await go('game.html');
   const W = f.contentWindow;
-  W.eval("window.requestAnimationFrame = () => 0; applyLevelEvent(null); eventBannerTimer = 0; gameState = 'playing'; npcs.forEach(n => { n.x = player.x + 6 + Math.random() * 30; n.aware = true; }); player.hp = 1; damagePlayer(50);");
+  W.eval("window.requestAnimationFrame = () => 0; applyLevelEvent(null); zoneHazard = null; eventBannerTimer = 0; gameState = 'playing'; npcs.forEach(n => { n.x = player.x + 6 + Math.random() * 30; n.aware = true; }); player.hp = 1; damagePlayer(50);");
   ok(W.eval('player.dead') && W.eval('player.lives') === 2, 'losing a life: player down, 2 lives left');
   const texts = [];
   W.eval("window.__t = []; const ft = CanvasRenderingContext2D.prototype.fillText; CanvasRenderingContext2D.prototype.fillText = function (t) { window.__t.push(String(t)); return ft.apply(this, arguments); }; loop();");

@@ -282,17 +282,19 @@ function applyLevelEvent(ev) {
   for (const e of list) e.apply();
 }
 const eventLabels = () => levelEvent.list.map(e => e.label).join(' + ');
+// Everything to show in the banner and the HUD: the level event(s), then the zone hazard (js/hazards.js)
+const shownEvents = () => [...(levelEvent.id === 'none' ? [] : levelEvent.list.length ? levelEvent.list : [levelEvent]), ...(zoneHazard ? [zoneHazard] : [])];
 
 function drawEventBanner() {
-  if (eventBannerTimer <= 0 || levelEvent.id === 'none') return;
+  const list = shownEvents();
+  if (eventBannerTimer <= 0 || !list.length) return;
   eventBannerTimer--;
   const alpha = Math.min(1, eventBannerTimer / 30) * Math.min(1, (EVENT_BANNER_FRAMES - eventBannerTimer + 1) / 20);
   const cx = BASE_W / 2;
   const by = 60;
 
-  const list = levelEvent.list.length ? levelEvent.list : [levelEvent];
   const double = list.length > 1;
-  const panelH = double ? 96 : 52;            // DOUBLE EVENT: title line + two events
+  const panelH = double ? 34 + list.length * 31 : 52;   // several: a title line, then each event / hazard
 
   ctx.globalAlpha = alpha;
   // Backing panel
@@ -308,7 +310,7 @@ function drawEventBanner() {
   if (double) {
     ctx.font = '6px "Public Pixel", monospace';
     ctx.fillStyle = '#f5c400';
-    ctx.fillText('DOUBLE EVENT!', cx, by + 15);
+    ctx.fillText(levelEvent.list.length > 1 ? (zoneHazard ? 'DOUBLE EVENT + ZONE HAZARD!' : 'DOUBLE EVENT!') : levelEvent.id === 'none' ? 'ZONE HAZARDS!' : 'EVENT + ZONE HAZARD!', cx, by + 15);
     y = by + 34;
   }
   for (const ev of list) {
@@ -328,10 +330,11 @@ function drawEventBanner() {
 const eventBadgeY = () => PAUSE_BTN.y + PAUSE_BTN.h + 14 + (MODE.id !== 'normal' ? 62 : 50);
 // Show active event(s) as small badges in the HUD (top-right, below level/riels)
 function drawEventHUDBadge() {
-  if (levelEvent.id === 'none' || gameState !== 'playing') return;
+  const list = shownEvents();
+  if (!list.length || gameState !== 'playing') return;
   ctx.font = '5px "Public Pixel", monospace';
   ctx.textAlign = 'right';
-  (levelEvent.list.length ? levelEvent.list : [levelEvent]).forEach((ev, i) => {
+  list.forEach((ev, i) => {
     ctx.fillStyle = ev.color;
     ctx.fillText(ev.label, BASE_W - 10, eventBadgeY() + i * 10);
   });
@@ -581,17 +584,17 @@ function updatePlayer() {
   // Horizontal
   let moving = false;
   const runSpeed = MOVE_SPEED * PLAYER_SPEED_MULT * (player.speedMult || 1) * (abilityOn('adrenaline') ? ADRENALINE_SPEED : 1);
+  let targetVx = 0;
   if (keys['ArrowLeft']) {
-    player.vx = -runSpeed;
+    targetVx = -runSpeed;
     player.facingRight = false;
     moving = true;
   } else if (keys['ArrowRight']) {
-    player.vx = runSpeed;
+    targetVx = runSpeed;
     player.facingRight = true;
     moving = true;
-  } else {
-    player.vx = 0;
   }
+  player.vx = hazardMoveVx(player.vx, targetVx, player.onGround);   // slides on SLIPPERY ICE (js/hazards.js)
 
   // Jump — ArrowUp only, Space is shoot
   if (keys['ArrowUp'] && player.onGround) {
@@ -2810,7 +2813,7 @@ function drawHUD() {
     if (MODE.id !== 'normal') lines.push(MODE.timed ? MODE.name + ' ' + window.RielModes.formatTime(campaign.playTimeMs) : MODE.name);
     ctx.font = '7px "Public Pixel", monospace';
     let wMax = Math.max(...lines.map(t => ctx.measureText(t).width));
-    const events = levelEvent.id === 'none' ? [] : (levelEvent.list.length ? levelEvent.list : [levelEvent]);
+    const events = shownEvents();
     ctx.font = '5px "Public Pixel", monospace';
     for (const ev of events) wMax = Math.max(wMax, ctx.measureText(ev.label).width);
     const top = PAUSE_BTN.y + PAUSE_BTN.h + 2, rowY = PAUSE_BTN.y + PAUSE_BTN.h + 14;
@@ -3147,6 +3150,8 @@ function proceedToShop() {
 })();
 
 generateLasers();
+// Zone hazard (50% chance, js/hazards.js): rolled after the lasers so they never stack
+pickZoneHazard();
 // Generate powerups for this level
 function generatePowerups() {
   powerups.length = 0;
@@ -3205,6 +3210,7 @@ function saveLevelProgress() {
     level: campaign.level, savedAt: Date.now(), camX, player: p,
     npcs: npcs.map(n => ({ ...n })), platforms, lasers, powerups, stats: levelStats,
     eventId: levelEvent.id, eventIds: levelEvent.list.map(e => e.id),
+    hazard: hazardSave(),
   };
   campaign.hp = Math.ceil(player.hp);
   campaign.maxHp = player.maxHp;
@@ -3237,6 +3243,8 @@ function restoreLevelState() {
     applyLevelEvent(savedEvents.map(id => LEVEL_EVENTS.find(e => e.id === id)));
     eventBannerTimer = 0;   // already seen when the level started
   }
+  // Keep the level's zone hazard and its timers (saves from before hazards keep the new roll)
+  if ('hazard' in s) hazardLoad(s.hazard);
   // Older saves have no level clock: that level can't earn speed/no-damage achievements.
   // (Big finite numbers, not Infinity, which JSON would save as null.)
   Object.assign(levelStats, s.stats || { timeMs: 1e12, damage: 1e12, plainDmg: 1e12 });
@@ -3286,11 +3294,13 @@ function loop() {
     updateNPCs();
     updateEnemyShots();
     updateLasers();
+    updateHazards();
     updatePowerups && updatePowerups();
   }
 
   drawWorld();
   drawLasers();
+  drawHazards();
   drawBullets();
   updateDrawDroppedMags();
   drawPowerups();

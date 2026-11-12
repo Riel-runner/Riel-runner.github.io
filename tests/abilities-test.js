@@ -31,7 +31,7 @@ async function arena(id, level = 1, campaignExtra = {}) {
   if (id) withAbility(id, level); else setProf({ gems: 0 });
   put({ ...base, level: 6, ...campaignExtra });
   await go('game.html');
-  E("applyLevelEvent(null); npcs.length = 0; platforms.length = 0; bullets.length = 0; lasers.length = 0; enemyShots.length = 0; player.x = 1500; player.y = GROUND_Y - PLAYER_H; player.vx = 0; camX = player.x - BASE_W / 2; gameState = 'playing';");
+  E("applyLevelEvent(null); zoneHazard = null; npcs.length = 0; platforms.length = 0; bullets.length = 0; lasers.length = 0; enemyShots.length = 0; player.x = 1500; player.y = GROUND_Y - PLAYER_H; player.vx = 0; camX = player.x - BASE_W / 2; gameState = 'playing';");
 }
 const addNPC = (x, extra = '') => E("(() => { const n = makeNPC(" + x + "); n.aware = true; " + extra + " npcs.push(n); return npcs.length - 1; })()");
 
@@ -253,7 +253,7 @@ const addNPC = (x, extra = '') => E("(() => { const n = makeNPC(" + x + "); n.aw
   // In game: E and Q are separate, each with its own cooldown
   put({ ...base, level: 6 });
   await go('game.html');
-  E("applyLevelEvent(null); npcs.length = 0; player.x = 1500; camX = player.x - BASE_W / 2; gameState = 'playing';");
+  E("applyLevelEvent(null); zoneHazard = null; npcs.length = 0; player.x = 1500; camX = player.x - BASE_W / 2; gameState = 'playing';");
   const fq = addNPC(1530);
   ok(E('ABILITY_SLOTS[0].def.id') === 'shield' && E('ABILITY_SLOTS[1].def.id') === 'freeze', 'game loads Shield on E and Freeze on Q');
   E("keys.KeyQ = true; updatePlayer();");

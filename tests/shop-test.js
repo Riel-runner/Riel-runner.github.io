@@ -65,7 +65,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   ok(w.eval('ARMOR_BLOCK') === 0.5 && w.eval('PLAYER_SPEED_MULT') === 1.5, 'max armor blocks 50%, max speed = 1.5x');
   ok(w.eval('MAG_SIZE') === 70 && w.eval('player.bullets') === 70, 'max mag size: 70 rounds, level starts with a full 70-round mag');
   ok(w.eval('PLAYER_SHOOT_CD') === 9 && w.eval('RELOAD_FRAMES') === 54, 'max fire rate: 9 frames/shot (was 18); max reload: 0.9s (was 3s)');
-  w.eval('applyLevelEvent(null); player.hp = 100; window.__dmg = damagePlayer(20);'); // no random event (Glass Cannon adds damage)
+  w.eval('applyLevelEvent(null); zoneHazard = null; player.hp = 100; window.__dmg = damagePlayer(20);'); // no random event (Glass Cannon adds damage)
   ok(w.eval('player.hp') === 90 && w.__dmg === 10, 'armor halves a 20-damage hit to 10');
   put({ ...base, level: 3, lives: 3, hp: 170 });
   await go('game.html'); w = f.contentWindow;
@@ -88,7 +88,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   w = f.contentWindow;
   const cd = w.eval('PLAYER_SHOOT_CD');
   ok(Math.abs(cd - 6 * 0.65) < 1e-9, 'SMG fire rate 7: 3.9 frames per shot (no rounding, no 4-frame cap)');
-  w.eval("applyLevelEvent(null); npcs.length = 0; campaign.shotsFired = 0; player.shootTimer = 0; keys.Space = true; for (let i = 0; i < 780; i++) { player.bullets = 999; player.reloadTimer = 0; updatePlayer(); } keys.Space = false;");
+  w.eval("applyLevelEvent(null); zoneHazard = null; npcs.length = 0; campaign.shotsFired = 0; player.shootTimer = 0; keys.Space = true; for (let i = 0; i < 780; i++) { player.bullets = 999; player.reloadTimer = 0; updatePlayer(); } keys.Space = false;");
   ok(w.eval('campaign.shotsFired') === 200, 'it really fires at 15.4 shots/s in game (' + w.eval('campaign.shotsFired') + ' shots in 13s, want 200)');
 
   document.getElementById('out').textContent = log.join('\n');
