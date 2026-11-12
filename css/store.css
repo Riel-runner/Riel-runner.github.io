@@ -240,7 +240,7 @@ body::after {
 .class-desc { font-size: 5px; line-height: 1.8; color: #888870; letter-spacing: 0.06em; text-align: center; min-height: 26px; }
 
 /* ── Abilities tab (js/store-abilities.js) ── */
-.tabs { grid-template-columns: repeat(5, 1fr); }
+.tabs { grid-template-columns: repeat(6, 1fr); }
 .tab-ability { color: #f5c400; border-color: #5a4a10; }
 .ability-panel { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .ability-panel[hidden], .store-grid[hidden] { display: none; }
@@ -352,3 +352,6 @@ body::after {
 .slot-note  { font-size: 6px; color: #888870; letter-spacing: 0.08em; line-height: 1.6; }
 .slot-note b { color: #f5c400; font-weight: normal; }
 .slot-buy { width: auto; flex-shrink: 0; padding: 10px 12px; font-size: 7px; }
+
+/* Pets tab (js/store-pets.js): same wheel and cards as abilities */
+.pet-kind { font-size: 7px; color: #888870; }

@@ -87,6 +87,11 @@ const ABILITY_SLOTS = [
   { ...(ABILITY  || {}), key: 'E', cdKey: 'abilityCd',  timeKey: 'abilityTime' },
   { ...(ABILITY2 || {}), key: 'Q', cdKey: 'ability2Cd', timeKey: 'ability2Time' },
 ];
+// Pet (js/pets.js): follows you and gives passive buffs (percentages in PET_S); awakened
+// pets add a special effect (petAwake). Damage, armor, speed and fire rate hook in below.
+const PET   = window.RielPets.equippedInfo();
+const PET_S = PET ? PET.s : { dmg: 0, armor: 0, speed: 0, fire: 0, regen: 0, riels: 0 };
+const petAwake = id => !!PET && PET.awakened && PET.def.id === id;
 const trailParticles = [];
 
 // Run stats shown on the death screen / campaign details. Older saves won't
@@ -390,6 +395,9 @@ const player = {
   // Overcharge: extra HP above max from awakened Life Leech. Normal healing can't
   // add to it; damage uses it up first. Carried between levels until it's gone.
   overHp: campaign.overHp || 0,
+  // Pet effects: SHELLY's one blocked hit, HOPPER's after-dash boost (frames), HOOT's shot
+  // count, DRACO's fireball timer and the regen timer.
+  petShell: true, petSpring: 0, petShots: 0, petBreath: 0, petRegen: 0,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -583,7 +591,7 @@ function updatePlayer() {
 
   // Horizontal
   let moving = false;
-  const runSpeed = MOVE_SPEED * PLAYER_SPEED_MULT * (player.speedMult || 1) * (abilityOn('adrenaline') ? ADRENALINE_SPEED : 1);
+  const runSpeed = MOVE_SPEED * PLAYER_SPEED_MULT * (player.speedMult || 1) * (abilityOn('adrenaline') ? ADRENALINE_SPEED : 1) * (1 + PET_S.speed / 100);
   let targetVx = 0;
   if (keys['ArrowLeft']) {
     targetVx = -runSpeed;
@@ -609,6 +617,7 @@ function updatePlayer() {
     player.dashVx     = player.facingRight ? DASH_DISTANCE / DASH_DURATION : -DASH_DISTANCE / DASH_DURATION;
     player.dashCooldown = abilityOn('adrenaline') && abilityAwake('adrenaline') ? 0 : DASH_COOLDOWN; // Rush trait: no cooldown
     keys['ArrowDown'] = false; // consume key so it doesn't retrigger
+    if (petAwake('bunny')) player.petSpring = PET_SPRING_FRAMES;   // HOPPER: Spring
   }
 
   // Handle active dash
@@ -688,7 +697,7 @@ function updatePlayer() {
     firePlayerBullet();
     // Frames until the next shot: Fire Rate upgrade, fast-fire event and Quick Draw. Added to the
     // leftover (not reset), so fractional cooldowns average out exactly and every upgrade level counts.
-    player.shootTimer += PLAYER_SHOOT_CD * (levelEvent.fireRateMult || 1) / (abilityOn('quickdraw') ? QUICKDRAW_FIRE : 1);
+    player.shootTimer += PLAYER_SHOOT_CD * (levelEvent.fireRateMult || 1) / (abilityOn('quickdraw') ? QUICKDRAW_FIRE : 1) / (1 + PET_S.fire / 100);
   }
 
   // Camera: keep player centred-ish
@@ -826,6 +835,8 @@ function firePlayerBullet() {
     dx = tx / len; dy = ty / len;
   }
 
+  // HOOT (awakened): every 8th shot hits for triple damage
+  const sharp = petAwake('owl') && ++player.petShots % PET_SHARP_EVERY === 0;
   const pellets = PLAYER_CLASS.pellets || 1;
   for (let i = 0; i < pellets; i++) {
     // Shotgun: fan the pellets evenly across the spread angle around the aim direction.
@@ -834,7 +845,8 @@ function firePlayerBullet() {
     bullets.push({ x: startX, y: startY, dx: dx * ca - dy * sa, dy: dx * sa + dy * ca, alive: true,
                    speed: PLAYER_CLASS.bulletSpeed || BULLET_SPEED,   // sniper bullets fly faster
                    pierce: !!PLAYER_CLASS.pierce, hits: [],          // sniper: goes through enemies
-                   life: PLAYER_CLASS.range || 0 });                 // shotgun: short range
+                   life: PLAYER_CLASS.range || 0,                    // shotgun: short range
+                   sharp });
   }
   addStat('shotsFired', pellets);
   player.gunFlash = 5;
@@ -1217,7 +1229,7 @@ function updateNPCs() {
           break;
         }
         addStat('shotsHit');
-        hitNPC(n, classDamage() * (levelEvent.playerDmgMult || 1)); // class weapon x level event
+        hitNPC(n, classDamage() * (levelEvent.playerDmgMult || 1) * (b.sharp ? PET_SHARP_MULT : 1), b.sharp ? '#ff8a1a' : undefined); // class weapon x level event (x3: HOOT)
         break;
       }
     }
@@ -1700,7 +1712,8 @@ function separateNPCs() {
 function killNPC(n) {
   n.dead      = true;
   n.deadTimer = 0;
-  const reward = Math.round((n.rielReward || 2) * (levelEvent.rielMult || 1));
+  const reward = Math.round((n.rielReward || 2) * (levelEvent.rielMult || 1) * petRielMult());
+  if (petAwake('frog')) player.hp = Math.min(player.maxHp, player.hp + player.maxHp * PET_FEAST_HEAL);   // CROAK: Feast
   campaign.riels += reward;
   addStat('enemiesKilled');
   addStat('rielsEarned', reward);
@@ -1927,6 +1940,7 @@ function hitNPC(n, dmg, color = '#f5c400', fromAbility = false) {
   if (n.dead) return;
   if (abilityOn('shield') && abilityAwake('shield')) dmg *= AWAKEN_DMG_MULT;    // Power Surge
   if (n.frozen > 0 && abilityAwake('freeze')) dmg *= AWAKEN_DMG_MULT;           // Shatter
+  dmg *= petDamageMult(n);                                                        // pet buffs
   // ABILITY MASTER: counts as ability damage if an ability did it or one is in action right now:
   // a timed one running (Shield, Leech...), the target frozen / stunned, or Med Kit's Recovery regen.
   const withAbility = fromAbility || n.frozen > 0 || n.stun > 0 || player.regenTime > 0 ||
@@ -1945,6 +1959,112 @@ function leechHeal(amount) {
   player.hp = Math.min(player.maxHp, player.hp + amount);
   if (abilityAwake('leech') && amount > room) {
     player.overHp = Math.min(player.maxHp * OVERCHARGE_MAX, (player.overHp || 0) + amount - Math.max(0, room));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PETS (data: js/pets.js)
+// ═══════════════════════════════════════════════════════════════
+const PET_REGEN_FRAMES  = 180;    // regen buffs heal every 3s
+const PET_BOSS_DMG      = 1.3;    // SCRAPPY: Boss Hunter
+const PET_SPRING_FRAMES = 180;    // HOPPER: Spring lasts 3s after a dash...
+const PET_SPRING_DMG    = 1.25;   // ...for +25% damage
+const PET_SHARP_EVERY   = 8;      // HOOT: Sharp Eye, every 8th shot...
+const PET_SHARP_MULT    = 3;      // ...hits for triple damage
+const PET_FEAST_HEAL    = 0.02;   // CROAK: Feast, 2% max HP per kill
+const PET_FINISHER_HP   = 0.3;    // EMBER: Finisher, enemies under 30% HP...
+const PET_FINISHER_DMG  = 1.4;    // ...take +40%
+const PET_LASTSTAND_HP  = 0.3;    // FROSTY: Last Stand, under 30% HP...
+const PET_LASTSTAND_CUT = 0.7;    // ...you take 30% less
+const PET_BREATH_FRAMES = 360;    // DRACO: Fire Breath every 6s...
+const PET_BREATH_RANGE  = 320;    // ...at the nearest enemy this close...
+const PET_BREATH_DMG    = 3;      // ...for 3x your gun damage
+const PET_SCALE         = 2;      // pet art: 2 game px per pixel
+
+// Damage you deal: the pet's +% damage and the awakened effects that boost it.
+function petDamageMult(n) {
+  let m = 1 + PET_S.dmg / 100;
+  if (petAwake('pup') && isBossLevel()) m *= PET_BOSS_DMG;
+  if (petAwake('bunny') && player.petSpring > 0) m *= PET_SPRING_DMG;
+  if (petAwake('fox') && n && n.maxHp && n.hp < n.maxHp * PET_FINISHER_HP) m *= PET_FINISHER_DMG;
+  return m;
+}
+// Damage you take
+function petArmorMult() {
+  let m = 1 - PET_S.armor / 100;
+  if (petAwake('penguin') && player.hp < player.maxHp * PET_LASTSTAND_HP) m *= PET_LASTSTAND_CUT;
+  return m;
+}
+// Riels from a kill
+const petRielMult = () => (1 + PET_S.riels / 100) * (petAwake('cat') && isBossLevel() ? 2 : 1);
+
+// Where the pet is drawn: it floats behind you and catches up smoothly.
+const pet = { x: player.x - 20, y: player.y - 8 };
+const petShots = [];   // DRACO's fireballs
+
+function updatePet() {
+  if (!PET) return;
+  if (player.petSpring > 0) player.petSpring--;
+  // Regen buff: heal every 3s (never past max HP)
+  if (PET_S.regen > 0 && !player.dead && ++player.petRegen >= PET_REGEN_FRAMES) {
+    player.petRegen = 0;
+    if (player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + player.maxHp * PET_S.regen / 100);
+  }
+  // Follow
+  const tx = player.x + PLAYER_W / 2 + (player.facingRight ? -24 : 24);
+  const ty = player.y - 4 + Math.sin(frameCount * 0.08) * 3;
+  if (Math.abs(tx - pet.x) > 300) { pet.x = tx; pet.y = ty; }    // respawned far away: jump there
+  pet.x += (tx - pet.x) * 0.12;
+  pet.y += (ty - pet.y) * 0.12;
+  // DRACO (awakened): a fireball at the nearest enemy every 6s
+  if (petAwake('dragon') && !player.dead) {
+    if (player.petBreath > 0) player.petBreath--;
+    else {
+      let target = null, best = PET_BREATH_RANGE;
+      for (const n of npcs) {
+        if (n.dead) continue;
+        const d = Math.hypot(centerX(n) - pet.x, n.y + n.h / 2 - pet.y);
+        if (d < best) { best = d; target = n; }
+      }
+      if (target) {
+        const dx = centerX(target) - pet.x, dy = target.y + target.h / 2 - pet.y, len = Math.hypot(dx, dy) || 1;
+        petShots.push({ x: pet.x, y: pet.y, vx: dx / len * 7, vy: dy / len * 7, life: 70 });
+        player.petBreath = PET_BREATH_FRAMES;
+      }
+    }
+  }
+  for (let i = petShots.length - 1; i >= 0; i--) {
+    const s = petShots[i];
+    s.x += s.vx; s.y += s.vy;
+    const hit = npcs.find(n => !n.dead && s.x > n.x - 3 && s.x < n.x + n.w + 3 && s.y > n.y - 3 && s.y < n.y + n.h + 3);
+    if (hit) hitNPC(hit, classDamage() * PET_BREATH_DMG * (levelEvent.playerDmgMult || 1), '#ff8a1a');
+    if (hit || --s.life <= 0) petShots.splice(i, 1);
+  }
+}
+
+function drawPet() {
+  if (!PET) return;
+  const def = PET.def, w = window.RielPets.artWidth(def) * PET_SCALE, h = def.art.length * PET_SCALE;
+  const sx = Math.round(wp(pet.x) - w / 2), sy = Math.round(pet.y - h / 2);
+  if (sx < -40 || sx > BASE_W + 40) return;
+  if (PET.awakened) {                        // awakened: twinkling gold sparkles around it
+    ctx.fillStyle = '#ffe680';
+    for (let i = 0; i < 3; i++) {
+      const a = frameCount * 0.05 + i * 2.1;
+      if ((frameCount + i * 7) % 24 < 16) ctx.fillRect(Math.round(sx + w / 2 + Math.cos(a) * (w * 0.7)), Math.round(sy + h / 2 + Math.sin(a) * (h * 0.6)), 2, 2);
+    }
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';        // little shadow under it
+  ctx.fillRect(sx + 3, sy + h + 3, w - 6, 2);
+  window.RielPets.draw(ctx, def, sx, sy, PET_SCALE, { flip: !player.facingRight });
+  for (const s of petShots) {                // fireballs
+    const fx = Math.round(wp(s.x)), fy = Math.round(s.y);
+    ctx.fillStyle = 'rgba(255,120,30,0.5)';
+    ctx.fillRect(fx - Math.round(s.vx) - 3, fy - Math.round(s.vy) - 3, 6, 6);
+    ctx.fillStyle = '#ff8a1a';
+    ctx.fillRect(fx - 4, fy - 4, 8, 8);
+    ctx.fillStyle = '#ffe680';
+    ctx.fillRect(fx - 2, fy - 2, 4, 4);
   }
 }
 
@@ -2043,7 +2163,12 @@ function damagePlayer(amount, isTick) {
   if (player.dead) return 0;
   if (player.invuln > 0) return 0;  // just revived: a moment of safety
   if (abilityOn('shield')) { player.shieldHit = 8; return 0; } // Shield ability blocks everything
-  amount *= (1 - ARMOR_BLOCK) * (levelEvent.playerDamageTakenMult || 1);
+  if (amount > 0 && player.petShell && petAwake('turtle')) {   // SHELLY: Hard Shell
+    player.petShell = false; player.shieldHit = 8;
+    dmgNumbers.push({ x: player.x - 6, y: player.y - 16, amount: 'BLOCKED', color: '#a6d96a', life: 50, vy: -0.8, isText: true });
+    return 0;
+  }
+  amount *= (1 - ARMOR_BLOCK) * (levelEvent.playerDamageTakenMult || 1) * petArmorMult();
   // Overcharge soaks damage before HP does
   const soaked = Math.min(player.overHp || 0, amount);
   player.overHp = (player.overHp || 0) - soaked;
@@ -2161,6 +2286,7 @@ function killPlayer() {
 
 function respawnPlayer() {
   player.dead         = false;
+  player.petShell     = true;   // SHELLY blocks the first hit again
   player.hp           = player.maxHp;
   player.bullets      = MAG_SIZE;
   player.reloadTimer  = 0;
@@ -3186,7 +3312,8 @@ generatePowerups();
 // is cleared or the campaign falls.
 const PLAYER_SAVE_KEYS = ['x', 'y', 'vy', 'onGround', 'hp', 'maxHp', 'lives', 'gunDamage', 'bullets',
   'reloadTimer', 'facingRight', 'dead', 'deathX', 'respawnTimer', 'dashCooldown',
-  'jumpMult', 'jumpPowerTimer', 'speedMult', 'speedPowerTimer', 'abilityCd', 'abilityTime', 'ability2Cd', 'ability2Time', 'regenTime', 'overHp'];
+  'jumpMult', 'jumpPowerTimer', 'speedMult', 'speedPowerTimer', 'abilityCd', 'abilityTime', 'ability2Cd', 'ability2Time', 'regenTime', 'overHp',
+  'petShell', 'petSpring', 'petShots', 'petBreath', 'petRegen'];
 const AUTOSAVE_FRAMES = 5 * 60;
 
 // Write the campaign to the active save and to its slot in the campaign list.
@@ -3290,6 +3417,7 @@ function loop() {
 
   if (gameState === 'playing') {
     updatePlayer();
+    updatePet();
     updateBullets();
     updateNPCs();
     updateEnemyShots();
@@ -3308,6 +3436,7 @@ function loop() {
   drawAbilityFx();
   drawEnemyShots();
   drawBlasts();
+  drawPet();
   drawPlayer();
   updateDrawRielParticles();
   updateDrawDmgNumbers();
