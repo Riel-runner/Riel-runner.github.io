@@ -1706,7 +1706,9 @@ function separateNPCs() {
       const d = centerX(b) - centerX(a);
       if (Math.abs(d) < 10) {
         const push = d >= 0 ? 0.4 : -0.4;
-        a.x -= push; b.x += push;
+        // Stay inside the level: a crowd retreating into an edge could push one past it
+        a.x = Math.max(0, Math.min(LEVEL_WIDTH - a.w, a.x - push));
+        b.x = Math.max(0, Math.min(LEVEL_WIDTH - b.w, b.x + push));
       }
     }
   }

@@ -102,6 +102,8 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   ok(E(w, 'npcs[0].windup > 0 || npcs[0].chargeTimer > 0 || npcs[0].attackTimer > 0'), 'boss winds up a charge attack');
   E(w, 'npcs[0].hp = npcs[0].maxHp * 0.25;'); step(w, 2);
   ok(E(w, 'npcs.length') === 6 && E(w, 'npcs[0].phase') === 3, 'boss below 30%: phase 3, calls 3 more');
+  E(w, 'npcs.length = 0; for (let k = 0; k < 4; k++) { const n = makeNPC(0); n.x = 0.2 * k; n.y = GROUND_Y - n.h; n.onGround = true; npcs.push(n); } for (let k = 0; k < 60; k++) separateNPCs();');
+  ok(E(w, 'npcs.every(n => n.x >= 0 && n.x <= LEVEL_WIDTH - n.w)'), 'enemies crowded into the edge of the level are never pushed out of it');
 
   document.getElementById('out').textContent = log.join('\n');
 })().catch(e => { document.getElementById('out').textContent = log.join('\n') + '\nERROR ' + e.stack; });
