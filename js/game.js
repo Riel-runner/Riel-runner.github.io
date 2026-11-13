@@ -1987,6 +1987,8 @@ const PET_BREATH_FRAMES = 150;    // DRACO: Fire Breath every 2.5s...
 const PET_BREATH_RANGE  = 450;    // ...at the nearest enemy this close...
 const PET_BREATH_DMG    = 8;      // ...for 8x your gun damage...
 const PET_BREATH_SPLASH = 70;     // ...exploding on every enemy this close to the hit
+const PET_FIRE_SPEED    = 8;      // fireball speed (faster than any enemy runs or lunges)
+const PET_FIRE_TURN     = 0.35;   // how hard it homes in on its target each frame
 const PET_SCALE         = 2;      // pet art: 2 game px per pixel
 
 // Damage you deal: the pet's +% damage and the awakened effects that boost it.
@@ -2038,13 +2040,31 @@ function updatePet() {
       }
       if (target) {
         const dx = centerX(target) - pet.x, dy = target.y + target.h / 2 - pet.y, len = Math.hypot(dx, dy) || 1;
-        petShots.push({ x: pet.x, y: pet.y, vx: dx / len * 8, vy: dy / len * 8, life: 80 });
+        petShots.push({ x: pet.x, y: pet.y, vx: dx / len * PET_FIRE_SPEED, vy: dy / len * PET_FIRE_SPEED, life: 150, target });
         player.petBreath = PET_BREATH_FRAMES;
       }
     }
   }
   for (let i = petShots.length - 1; i >= 0; i--) {
     const s = petShots[i];
+    // Homing: steer toward its target every frame, so jumping or running away doesn't save
+    // an enemy. If the target dies first, it picks the nearest enemy left.
+    if (!s.target || s.target.dead) {
+      s.target = null;
+      let best = PET_BREATH_RANGE * 1.5;
+      for (const n of npcs) {
+        if (n.dead) continue;
+        const d = Math.hypot(centerX(n) - s.x, n.y + n.h / 2 - s.y);
+        if (d < best) { best = d; s.target = n; }
+      }
+    }
+    if (s.target) {
+      const dx = centerX(s.target) - s.x, dy = s.target.y + s.target.h / 2 - s.y, len = Math.hypot(dx, dy) || 1;
+      s.vx += (dx / len * PET_FIRE_SPEED - s.vx) * PET_FIRE_TURN;
+      s.vy += (dy / len * PET_FIRE_SPEED - s.vy) * PET_FIRE_TURN;
+      const v = Math.hypot(s.vx, s.vy) || 1;
+      s.vx = s.vx / v * PET_FIRE_SPEED; s.vy = s.vy / v * PET_FIRE_SPEED;
+    }
     s.x += s.vx; s.y += s.vy;
     const hit = npcs.find(n => !n.dead && s.x > n.x - 3 && s.x < n.x + n.w + 3 && s.y > n.y - 3 && s.y < n.y + n.h + 3);
     if (hit) {                               // explodes: every enemy near the hit gets burned

@@ -201,6 +201,15 @@ const hitFor = (i, hp, dmg) => { E("npcs[" + i + "].hp = " + hp + "; hitNPC(npcs
   ok(near(burn, E('classDamage() * 8 * 1.5')), 'awakened DRACO: breathes a fireball at the nearest enemy for 8x damage (' + Math.round(burn * 10) / 10 + ')');
   ok(near(1000 - E('npcs[' + i1 + '].hp'), burn) && E('npcs[' + i2 + '].hp') === 1000, 'the fireball explodes on the enemy next to it too, not on far ones');
   ok(E('player.petBreath') > 100 && E('PET_BREATH_FRAMES') === 150, 'and breathes again every 2.5s');
+  E("npcs.length = 0; petShots.length = 0; player.petBreath = 0; pet.x = player.x; pet.y = player.y - 4;");
+  const iD = addNPC(1800, 'n.hp = 1000; n.maxHp = 1000; n.y = GROUND_Y - n.h;');
+  E("updatePet();");
+  E("(() => { const n = npcs[" + iD + "]; for (let k = 0; k < 140 && petShots.length; k++) { n.x += 3.5; n.y = GROUND_Y - n.h - Math.abs(Math.sin(k / 6)) * 60; updatePet(); } })()");
+  ok(E('npcs[' + iD + '].hp') < 1000, 'the fireball homes in: it still hits an enemy that runs away and jumps to dodge it');
+  E("npcs.length = 0; petShots.length = 0; player.petBreath = 0;");
+  const iA = addNPC(1700, 'n.hp = 1000; n.maxHp = 1000;'), iB = addNPC(1900, 'n.hp = 1000; n.maxHp = 1000;');
+  E("updatePet(); npcs[" + iA + "].dead = true; for (let k = 0; k < 120 && petShots.length; k++) updatePet();");
+  ok(E('npcs[' + iB + '].hp') < 1000, 'if its target dies first, the fireball turns to the nearest enemy left');
 
   // ── The pet follows you and is drawn ──
   E("player.x = 2000; for (let k = 0; k < 90; k++) updatePet();");
