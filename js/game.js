@@ -622,13 +622,14 @@ function updatePlayer() {
     if (petAwake('bunny')) player.petSpring = PET_SPRING_FRAMES;   // HOPPER: Spring
   }
 
-  // Handle active dash
+  // Handle active dash (the last frame still moves, so a dash covers its full DASH_DISTANCE)
+  let dashEnded = false;
   if (player.isDashing) {
     player.dashTimer--;
     player.vx = player.dashVx;
     if (player.dashTimer <= 0) {
       player.isDashing = false;
-      player.vx = 0;
+      dashEnded = true;
     }
   }
 
@@ -638,6 +639,7 @@ function updatePlayer() {
   // Gravity (modified by low-gravity event)
   player.vy += GRAVITY * (levelEvent.gravityMult || 1);
   player.x  += player.vx;
+  if (dashEnded) player.vx = 0;   // dash over: stop (no sliding on from it)
   player.y  += player.vy;
 
   // World bounds (can't go left of start, can't go past end)
