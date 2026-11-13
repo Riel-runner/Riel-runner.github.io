@@ -398,7 +398,7 @@ const player = {
   overHp: campaign.overHp || 0,
   // Pet effects: SHELLY's one blocked hit, HOPPER's after-dash boost (frames), HOOT's shot
   // count, DRACO's fireball timer and the regen timer.
-  petShell: true, petSpring: 0, petShots: 0, petBreath: 0, petRegen: 0,
+  petShell: true, petShellCd: 0, petSpring: 0, petShots: 0, petBreath: 0, petRegen: 0,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1684,7 +1684,7 @@ function drawBlasts() {
   for (let i = blasts.length - 1; i >= 0; i--) {
     const b = blasts[i];
     b.t++;
-    const r = BOMB_RADIUS * Math.min(1, b.t / 8), a = Math.max(0, 1 - b.t / 22);
+    const r = (b.r || BOMB_RADIUS) * Math.min(1, b.t / 8), a = Math.max(0, 1 - b.t / 22);
     ctx.globalAlpha = a;
     ctx.fillStyle = '#e67e22';
     ctx.beginPath(); ctx.arc(wp(b.x), b.y, r, 0, Math.PI * 2); ctx.fill();
@@ -1969,19 +1969,22 @@ function leechHeal(amount) {
 //  PETS (data: js/pets.js)
 // ═══════════════════════════════════════════════════════════════
 const PET_REGEN_FRAMES  = 180;    // regen buffs heal every 3s
-const PET_BOSS_DMG      = 1.3;    // SCRAPPY: Boss Hunter
-const PET_SPRING_FRAMES = 180;    // HOPPER: Spring lasts 3s after a dash...
-const PET_SPRING_DMG    = 1.25;   // ...for +25% damage
-const PET_SHARP_EVERY   = 8;      // HOOT: Sharp Eye, every 8th shot...
+const PET_BOSS_DMG      = 1.6;    // SCRAPPY: Boss Hunter, +60% on boss levels
+const PET_SHELL_FRAMES  = 600;    // SHELLY: Hard Shell blocks a hit, recharging every 10s
+const PET_SPRING_FRAMES = 240;    // HOPPER: Spring lasts 4s after a dash...
+const PET_SPRING_DMG    = 1.5;    // ...for +50% damage
+const PET_SHARP_EVERY   = 5;      // HOOT: Sharp Eye, every 5th shot...
 const PET_SHARP_MULT    = 3;      // ...hits for triple damage
-const PET_FEAST_HEAL    = 0.02;   // CROAK: Feast, 2% max HP per kill
-const PET_FINISHER_HP   = 0.3;    // EMBER: Finisher, enemies under 30% HP...
-const PET_FINISHER_DMG  = 1.4;    // ...take +40%
-const PET_LASTSTAND_HP  = 0.3;    // FROSTY: Last Stand, under 30% HP...
-const PET_LASTSTAND_CUT = 0.7;    // ...you take 30% less
-const PET_BREATH_FRAMES = 360;    // DRACO: Fire Breath every 6s...
-const PET_BREATH_RANGE  = 320;    // ...at the nearest enemy this close...
-const PET_BREATH_DMG    = 3;      // ...for 3x your gun damage
+const PET_FEAST_HEAL    = 0.05;   // CROAK: Feast, 5% max HP per kill
+const PET_JACKPOT       = 3;      // LUCKY: Jackpot, boss levels pay triple riels
+const PET_FINISHER_HP   = 0.4;    // EMBER: Finisher, enemies under 40% HP...
+const PET_FINISHER_DMG  = 1.8;    // ...take +80%
+const PET_LASTSTAND_HP  = 0.4;    // FROSTY: Last Stand, under 40% HP...
+const PET_LASTSTAND_CUT = 0.5;    // ...you take half damage
+const PET_BREATH_FRAMES = 150;    // DRACO: Fire Breath every 2.5s...
+const PET_BREATH_RANGE  = 450;    // ...at the nearest enemy this close...
+const PET_BREATH_DMG    = 8;      // ...for 8x your gun damage...
+const PET_BREATH_SPLASH = 70;     // ...exploding on every enemy this close to the hit
 const PET_SCALE         = 2;      // pet art: 2 game px per pixel
 
 // Damage you deal: the pet's +% damage and the awakened effects that boost it.
@@ -1999,7 +2002,7 @@ function petArmorMult() {
   return m;
 }
 // Riels from a kill
-const petRielMult = () => (1 + PET_S.riels / 100) * (petAwake('cat') && isBossLevel() ? 2 : 1);
+const petRielMult = () => (1 + PET_S.riels / 100) * (petAwake('cat') && isBossLevel() ? PET_JACKPOT : 1);
 
 // Where the pet is drawn: it floats behind you and catches up smoothly.
 const pet = { x: player.x - 20, y: player.y - 8 };
@@ -2008,6 +2011,8 @@ const petShots = [];   // DRACO's fireballs
 function updatePet() {
   if (!PET) return;
   if (player.petSpring > 0) player.petSpring--;
+  // SHELLY (awakened): a used shell grows back after 10s
+  if (petAwake('turtle') && !player.petShell && --player.petShellCd <= 0) player.petShell = true;
   // Regen buff: heal every 3s (never past max HP)
   if (PET_S.regen > 0 && !player.dead && ++player.petRegen >= PET_REGEN_FRAMES) {
     player.petRegen = 0;
@@ -2019,7 +2024,7 @@ function updatePet() {
   if (Math.abs(tx - pet.x) > 300) { pet.x = tx; pet.y = ty; }    // respawned far away: jump there
   pet.x += (tx - pet.x) * 0.12;
   pet.y += (ty - pet.y) * 0.12;
-  // DRACO (awakened): a fireball at the nearest enemy every 6s
+  // DRACO (awakened): an exploding fireball at the nearest enemy every 2.5s
   if (petAwake('dragon') && !player.dead) {
     if (player.petBreath > 0) player.petBreath--;
     else {
@@ -2031,7 +2036,7 @@ function updatePet() {
       }
       if (target) {
         const dx = centerX(target) - pet.x, dy = target.y + target.h / 2 - pet.y, len = Math.hypot(dx, dy) || 1;
-        petShots.push({ x: pet.x, y: pet.y, vx: dx / len * 7, vy: dy / len * 7, life: 70 });
+        petShots.push({ x: pet.x, y: pet.y, vx: dx / len * 8, vy: dy / len * 8, life: 80 });
         player.petBreath = PET_BREATH_FRAMES;
       }
     }
@@ -2040,7 +2045,11 @@ function updatePet() {
     const s = petShots[i];
     s.x += s.vx; s.y += s.vy;
     const hit = npcs.find(n => !n.dead && s.x > n.x - 3 && s.x < n.x + n.w + 3 && s.y > n.y - 3 && s.y < n.y + n.h + 3);
-    if (hit) hitNPC(hit, classDamage() * PET_BREATH_DMG * (levelEvent.playerDmgMult || 1), '#ff8a1a');
+    if (hit) {                               // explodes: every enemy near the hit gets burned
+      const dmg = classDamage() * PET_BREATH_DMG * (levelEvent.playerDmgMult || 1);
+      for (const n of npcs) if (!n.dead && Math.hypot(centerX(n) - s.x, n.y + n.h / 2 - s.y) <= PET_BREATH_SPLASH) hitNPC(n, dmg, '#ff8a1a');
+      blasts.push({ x: s.x, y: s.y, t: 0, r: PET_BREATH_SPLASH });
+    }
     if (hit || --s.life <= 0) petShots.splice(i, 1);
   }
 }
@@ -2068,11 +2077,11 @@ function drawPet() {
   for (const s of petShots) {                // fireballs
     const fx = Math.round(wp(s.x)), fy = Math.round(s.y);
     ctx.fillStyle = 'rgba(255,120,30,0.5)';
-    ctx.fillRect(fx - Math.round(s.vx) - 3, fy - Math.round(s.vy) - 3, 6, 6);
+    ctx.fillRect(fx - Math.round(s.vx) - 4, fy - Math.round(s.vy) - 4, 8, 8);
     ctx.fillStyle = '#ff8a1a';
-    ctx.fillRect(fx - 4, fy - 4, 8, 8);
+    ctx.fillRect(fx - 5, fy - 5, 10, 10);
     ctx.fillStyle = '#ffe680';
-    ctx.fillRect(fx - 2, fy - 2, 4, 4);
+    ctx.fillRect(fx - 3, fy - 3, 6, 6);
   }
 }
 
@@ -2172,7 +2181,7 @@ function damagePlayer(amount, isTick) {
   if (player.invuln > 0) return 0;  // just revived: a moment of safety
   if (abilityOn('shield')) { player.shieldHit = 8; return 0; } // Shield ability blocks everything
   if (amount > 0 && player.petShell && petAwake('turtle')) {   // SHELLY: Hard Shell
-    player.petShell = false; player.shieldHit = 8;
+    player.petShell = false; player.petShellCd = PET_SHELL_FRAMES; player.shieldHit = 8;
     dmgNumbers.push({ x: player.x - 6, y: player.y - 16, amount: 'BLOCKED', color: '#a6d96a', life: 50, vy: -0.8, isText: true });
     return 0;
   }
@@ -3339,7 +3348,7 @@ generatePowerups();
 const PLAYER_SAVE_KEYS = ['x', 'y', 'vy', 'onGround', 'hp', 'maxHp', 'lives', 'gunDamage', 'bullets',
   'reloadTimer', 'facingRight', 'dead', 'deathX', 'respawnTimer', 'dashCooldown',
   'jumpMult', 'jumpPowerTimer', 'speedMult', 'speedPowerTimer', 'abilityCd', 'abilityTime', 'ability2Cd', 'ability2Time', 'regenTime', 'overHp',
-  'petShell', 'petSpring', 'petShots', 'petBreath', 'petRegen'];
+  'petShell', 'petShellCd', 'petSpring', 'petShots', 'petBreath', 'petRegen'];
 const AUTOSAVE_FRAMES = 5 * 60;
 
 // Write the campaign to the active save and to its slot in the campaign list.

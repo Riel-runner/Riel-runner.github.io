@@ -53,7 +53,7 @@ const hitFor = (i, hp, dmg) => { E("npcs[" + i + "].hp = " + hp + "; hitNPC(npcs
   ok(r(0) === 'common' && r(0.599) === 'common' && r(0.61) === 'rare' && r(0.88) === 'super' && r(0.975) === 'legendary', 'pet wheel odds: 60% common, 27% rare, 10% super rare, 3% legendary');
   const nBuffs = id => Object.keys(P.byId(id).lv[0]).length;
   ok(P.LIST.filter(p => p.rarity === 'common' || p.rarity === 'rare').every(p => nBuffs(p.id) === 1), 'common and rare pets give one buff');
-  ok(P.LIST.filter(p => p.rarity === 'super').every(p => nBuffs(p.id) === 2) && nBuffs('dragon') === 3, 'super rare pets give 2 buffs combined, the legendary dragon 3');
+  ok(P.LIST.filter(p => p.rarity === 'super').every(p => nBuffs(p.id) === 2) && nBuffs('dragon') === 4, 'super rare pets give 2 buffs combined, the legendary dragon 4');
   ok(P.LIST.every(p => p.lv[2][Object.keys(p.lv[2])[0]] > p.lv[0][Object.keys(p.lv[0])[0]] && p.trait), 'every pet gets stronger with level and has an awakened effect');
 
   // ── Spinning ──
@@ -78,12 +78,12 @@ const hitFor = (i, hp, dmg) => { E("npcs[" + i + "].hp = " + hp + "; hitNPC(npcs
   await go('store.html');
   d = f.contentDocument;
   let pc = d.querySelector('.pet-card[data-id="pup"]');
-  ok(pc && !pc.querySelector('.pet-fuse').disabled && /3 \/ 3 COPIES TO FUSE TO LV 2/.test(pc.textContent) && /\+6% DAMAGE/.test(pc.textContent), 'pup card: +6% damage, 3 / 3 copies, FUSE button next to EQUIP');
+  ok(pc && !pc.querySelector('.pet-fuse').disabled && /3 \/ 3 COPIES TO FUSE TO LV 2/.test(pc.textContent) && /\+12% DAMAGE/.test(pc.textContent), 'pup card: +12% damage, 3 / 3 copies, FUSE button next to EQUIP');
   pc.querySelector('.pet-fuse').click();
   await wait(1700);
   ok(prof().pets.owned.pup.level === 2 && prof().pets.owned.pup.copies === 0, 'fusing uses 3 copies: now LV 2');
   pc = f.contentDocument.querySelector('.pet-card[data-id="pup"]');
-  ok(/\+9% DAMAGE/.test(pc.textContent) && /0 \/ 10 COPIES TO AWAKEN/.test(pc.textContent) && /AWAKEN/.test(pc.querySelector('.pet-fuse').textContent), 'LV 2: +9% damage, 10 more copies to AWAKEN');
+  ok(/\+18% DAMAGE/.test(pc.textContent) && /0 \/ 10 COPIES TO AWAKEN/.test(pc.textContent) && /AWAKEN/.test(pc.querySelector('.pet-fuse').textContent), 'LV 2: +18% damage, 10 more copies to AWAKEN');
   setProf({ gems: 0, pets: { owned: { pup: { level: 2, copies: 11 }, owl: { level: 1, copies: 0 } }, equipped: 'owl' } });
   await go('store.html');
   W = f.contentWindow;
@@ -105,97 +105,102 @@ const hitFor = (i, hp, dmg) => { E("npcs[" + i + "].hp = " + hp + "; hitNPC(npcs
 
   await arena('pup', 1);
   i0 = addNPC(1600);
-  ok(near(hitFor(i0, 100, 10), 10.6), 'SCRAPPY LV 1: +6% damage');
+  ok(near(hitFor(i0, 100, 10), 11.2), 'SCRAPPY LV 1: +12% damage');
   await arena('pup', 3, 10);
   i0 = addNPC(1600);
-  ok(near(hitFor(i0, 1000, 10), 10 * 1.12 * 1.3), 'awakened SCRAPPY on a boss level: +12% and Boss Hunter +30%');
+  ok(near(hitFor(i0, 1000, 10), 10 * 1.25 * 1.6), 'awakened SCRAPPY on a boss level: +25% and Boss Hunter +60%');
   await arena('pup', 3, 6);
   i0 = addNPC(1600);
-  ok(near(hitFor(i0, 1000, 10), 11.2), 'awakened SCRAPPY on a normal level: just +12%');
+  ok(near(hitFor(i0, 1000, 10), 12.5), 'awakened SCRAPPY on a normal level: just +25%');
 
   await arena('turtle', 1);
-  ok(near(E('damagePlayer(100)'), E('100 * (1 - ARMOR_BLOCK) * 0.94')), 'SHELLY LV 1: 6% less damage taken');
+  ok(near(E('damagePlayer(100)'), E('100 * (1 - ARMOR_BLOCK) * 0.88')), 'SHELLY LV 1: 12% less damage taken');
   await arena('turtle', 3);
   const hp0 = E('player.hp');
   ok(E('damagePlayer(50)') === 0 && E('player.hp') === hp0 && E('player.petShell') === false, 'awakened SHELLY: the first hit is blocked (Hard Shell)');
-  ok(E('damagePlayer(10)') > 0, 'the next hit gets through (12% less)');
+  ok(E('damagePlayer(10)') > 0, 'the next hit gets through (25% less)');
+  E('for (let k = 0; k < 600; k++) updatePet();');
+  ok(E('player.petShell') === true && E('damagePlayer(50)') === 0, 'the shell grows back after 10s and blocks another whole hit');
   E('player.dead = true; player.deathX = 1500; respawnPlayer(); player.invuln = 0;');
   ok(E('damagePlayer(50)') === 0, 'after a respawn the shell blocks one hit again');
 
   await arena('bunny', 1);
   E("keys.ArrowRight = true; updatePlayer(); keys.ArrowRight = false;");
-  ok(near(E('player.vx'), E('MOVE_SPEED * PLAYER_SPEED_MULT * 1.05')), 'HOPPER LV 1: +5% move speed');
+  ok(near(E('player.vx'), E('MOVE_SPEED * PLAYER_SPEED_MULT * 1.1')), 'HOPPER LV 1: +10% move speed');
   await arena('bunny', 3);
   i0 = addNPC(1700);
   ok(near(hitFor(i0, 1000, 10), 10), 'awakened HOPPER: no damage boost before dashing');
   E("keys.ArrowDown = true; updatePlayer();");
-  ok(E('player.petSpring') === 180 && near(hitFor(i0, 1000, 10), 12.5), 'awakened HOPPER: +25% damage for 3s after a dash (Spring)');
-  E("for (let k = 0; k < 181; k++) updatePet();");
-  ok(near(hitFor(i0, 1000, 10), 10), 'Spring wears off after 3s');
+  ok(E('player.petSpring') === 240 && near(hitFor(i0, 1000, 10), 15), 'awakened HOPPER: +50% damage for 4s after a dash (Spring)');
+  E("for (let k = 0; k < 241; k++) updatePet();");
+  ok(near(hitFor(i0, 1000, 10), 10), 'Spring wears off after 4s');
 
   await arena('owl', 1);
   E("player.shootTimer = 0; player.bullets = 20; player.reloadTimer = 0; keys.Space = true; updatePlayer(); keys.Space = false;");
-  ok(near(E('player.shootTimer'), E('PLAYER_SHOOT_CD / 1.08')), 'HOOT LV 1: +8% fire rate');
+  ok(near(E('player.shootTimer'), E('PLAYER_SHOOT_CD / 1.15')), 'HOOT LV 1: +15% fire rate');
   await arena('owl', 3);
-  E("bullets.length = 0; for (let k = 0; k < 8; k++) { player.bullets = 20; player.reloadTimer = 0; firePlayerBullet(); }");
-  ok(E('bullets.filter(b => b.sharp).length') === (E('PLAYER_CLASS.pellets || 1')) && E('bullets[bullets.length - 1].sharp') === true, 'awakened HOOT: every 8th shot is a Sharp Eye shot');
+  E("bullets.length = 0; for (let k = 0; k < 5; k++) { player.bullets = 20; player.reloadTimer = 0; firePlayerBullet(); }");
+  ok(E('bullets.filter(b => b.sharp).length') === (E('PLAYER_CLASS.pellets || 1')) && E('bullets[bullets.length - 1].sharp') === true, 'awakened HOOT: every 5th shot is a Sharp Eye shot');
   i0 = addNPC(1700);
   E("bullets.length = 0; const n = npcs[" + i0 + "]; n.hp = 1000; n.maxHp = 1000; bullets.push({ x: n.x + n.w / 2, y: n.y + n.h / 2, dx: 1, dy: 0, alive: true, speed: 0, pierce: false, hits: [], life: 0, sharp: true }); window.__h = n.hp; updateNPCs();");
   ok(near(E('__h - npcs[' + i0 + '].hp'), E('classDamage() * 3')), 'a Sharp Eye shot hits for triple damage');
 
   await arena('frog', 1);
   E('player.hp = 50; for (let k = 0; k < 180; k++) updatePet();');
-  ok(near(E('player.hp'), 50 + 170 * 0.01), 'CROAK LV 1: heals 1% max HP every 3s');
+  ok(near(E('player.hp'), 50 + 170 * 0.02), 'CROAK LV 1: heals 2% max HP every 3s');
   E('player.hp = 170; for (let k = 0; k < 180; k++) updatePet();');
   ok(E('player.hp') === 170, 'regen never heals past max HP');
   await arena('frog', 3);
   addNPC(2200);
   i0 = addNPC(1700);
   E('player.hp = 50; player.petRegen = 0; killNPC(npcs[' + i0 + ']);');
-  ok(near(E('player.hp'), 50 + 170 * 0.02), 'awakened CROAK: every kill heals 2% max HP (Feast)');
+  ok(near(E('player.hp'), 50 + 170 * 0.05), 'awakened CROAK: every kill heals 5% max HP (Feast)');
 
   await arena('cat', 1);
   addNPC(2200);
   i0 = addNPC(1700, 'n.rielReward = 10;');
   let r0 = E('campaign.riels');
   E('killNPC(npcs[' + i0 + '])');
-  ok(E('campaign.riels') - r0 === 11, 'LUCKY LV 1: +10% riels from kills');
+  ok(E('campaign.riels') - r0 === 13, 'LUCKY LV 1: +25% riels from kills (10 -> 13)');
   await arena('cat', 3, 10);
   addNPC(2200); addNPC(2300);
   i0 = addNPC(1700, 'n.rielReward = 10;');
   r0 = E('campaign.riels');
   E('killNPC(npcs[' + i0 + '])');
-  ok(E('campaign.riels') - r0 === 24, 'awakened LUCKY on a boss level: +20% and double riels (Jackpot)');
+  ok(E('campaign.riels') - r0 === 48, 'awakened LUCKY on a boss level: +60% and triple riels (Jackpot)');
 
   await arena('fox', 1);
   i0 = addNPC(1600);
   E("player.shootTimer = 0; player.bullets = 20; player.reloadTimer = 0; keys.Space = true; updatePlayer(); keys.Space = false;");
-  ok(near(hitFor(i0, 1000, 10), 10.6) && near(E('player.shootTimer'), E('PLAYER_SHOOT_CD / 1.06')), 'EMBER LV 1: +6% damage AND +6% fire rate');
+  ok(near(hitFor(i0, 1000, 10), 11.2) && near(E('player.shootTimer'), E('PLAYER_SHOOT_CD / 1.12')), 'EMBER LV 1: +12% damage AND +12% fire rate');
   await arena('fox', 3);
   i0 = addNPC(1600);
   E('npcs[' + i0 + '].maxHp = 100;');
-  ok(near(hitFor(i0, 50, 10), 11.2) && near(hitFor(i0, 25, 10), 11.2 * 1.4), 'awakened EMBER: +40% damage to enemies under 30% HP (Finisher)');
+  ok(near(hitFor(i0, 50, 10), 12.5) && near(hitFor(i0, 35, 10), 12.5 * 1.8), 'awakened EMBER: +80% damage to enemies under 40% HP (Finisher)');
 
   await arena('penguin', 1);
   E("keys.ArrowRight = true; updatePlayer(); keys.ArrowRight = false;");
-  ok(near(E('damagePlayer(100)'), E('100 * (1 - ARMOR_BLOCK) * 0.94')) && near(E('player.vx'), E('MOVE_SPEED * PLAYER_SPEED_MULT * 1.05')), 'FROSTY LV 1: 6% less damage AND +5% speed');
+  ok(near(E('damagePlayer(100)'), E('100 * (1 - ARMOR_BLOCK) * 0.88')) && near(E('player.vx'), E('MOVE_SPEED * PLAYER_SPEED_MULT * 1.1')), 'FROSTY LV 1: 12% less damage AND +10% speed');
   await arena('penguin', 3);
   E('player.hp = 150;');
   const full = E('damagePlayer(10)');
   E('player.hp = 40;');
-  ok(near(E('damagePlayer(10)'), full * 0.7), 'awakened FROSTY: under 30% HP you take 30% less (Last Stand)');
+  ok(near(E('damagePlayer(10)'), full * 0.5), 'awakened FROSTY: under 40% HP you take half damage (Last Stand)');
 
   await arena('dragon', 1);
   i0 = addNPC(1650, 'n.hp = 1000; n.maxHp = 1000;');
   E('for (let k = 0; k < 400; k++) updatePet();');
   ok(E('npcs[' + i0 + '].hp') === 1000 && E('petShots.length') === 0, 'DRACO LV 1: no fireballs before it is awakened');
-  ok(near(hitFor(i0, 1000, 10), 11) , 'DRACO LV 1: +10% damage (with fire rate and regen too)');
+  ok(near(hitFor(i0, 1000, 10), 12.5) && near(E('damagePlayer(100)'), E('100 * (1 - ARMOR_BLOCK) * 0.9')), 'DRACO LV 1: +25% damage and 10% less damage taken (plus fire rate and regen)');
   await arena('dragon', 3);
   i0 = addNPC(1650, 'n.hp = 1000; n.maxHp = 1000;');
-  E('for (let k = 0; k < 60; k++) updatePet();');
+  const i1 = addNPC(1690, 'n.hp = 1000; n.maxHp = 1000;');
+  const i2 = addNPC(2600, 'n.hp = 1000; n.maxHp = 1000;');
+  E('for (let k = 0; k < 40; k++) updatePet();');
   const burn = 1000 - E('npcs[' + i0 + '].hp');
-  ok(near(burn, E('classDamage() * 3 * 1.18')), 'awakened DRACO: breathes a fireball at the nearest enemy for 3x damage (' + Math.round(burn * 10) / 10 + ')');
-  ok(E('player.petBreath') > 250, 'then waits 6s before the next one');
+  ok(near(burn, E('classDamage() * 8 * 1.5')), 'awakened DRACO: breathes a fireball at the nearest enemy for 8x damage (' + Math.round(burn * 10) / 10 + ')');
+  ok(near(1000 - E('npcs[' + i1 + '].hp'), burn) && E('npcs[' + i2 + '].hp') === 1000, 'the fireball explodes on the enemy next to it too, not on far ones');
+  ok(E('player.petBreath') > 100 && E('PET_BREATH_FRAMES') === 150, 'and breathes again every 2.5s');
 
   // ── The pet follows you and is drawn ──
   E("player.x = 2000; for (let k = 0; k < 90; k++) updatePet();");
