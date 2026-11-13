@@ -41,13 +41,21 @@
   </div>
 
   <!-- Categories -->
-  <div class="tabs" role="tablist">
-    <button class="tab" role="tab" data-cat="class">CLASSES</button>
-    <button class="tab" role="tab" data-cat="weapon">WEAPON SKINS</button>
-    <button class="tab" role="tab" data-cat="player">PLAYER SKINS</button>
-    <button class="tab" role="tab" data-cat="trail">TRAILS</button>
-    <button class="tab tab-ability" role="tab" data-cat="ability">ABILITIES</button>
-    <button class="tab tab-ability" role="tab" data-cat="pet">PETS</button>
+  <!-- Categories: looks only on top, things that change gameplay below -->
+  <div class="tab-rows" role="tablist">
+    <div class="tab-row-label">LOOKS &middot; NO EFFECT ON GAMEPLAY</div>
+    <div class="tabs tabs-looks">
+      <button class="tab" role="tab" data-cat="weapon">WEAPON SKINS</button>
+      <button class="tab" role="tab" data-cat="player">PLAYER SKINS</button>
+      <button class="tab" role="tab" data-cat="trail">TRAILS</button>
+    </div>
+    <div class="tab-row-label">GAMEPLAY</div>
+    <div class="tabs tabs-play">
+      <button class="tab" role="tab" data-cat="class">CLASSES</button>
+      <button class="tab tab-ability" role="tab" data-cat="ability">ABILITIES</button>
+      <button class="tab tab-ability" role="tab" data-cat="pet">PETS</button>
+      <button class="tab tab-ability" role="tab" data-cat="perk">UPGRADES</button>
+    </div>
   </div>
 
   <!-- Abilities: spin the wheel, then equip / upgrade below (js/abilities.js) -->
@@ -80,6 +88,12 @@
     <div class="ability-list" id="pet-list"></div>
   </div>
 
+  <!-- Gem upgrades: 5 tiers each, count in every campaign (js/perks.js) -->
+  <div class="ability-panel" id="perk-panel" hidden>
+    <div class="ability-help">GEM UPGRADES COUNT IN <b>EVERY CAMPAIGN</b> &middot; <b>5</b> TIERS EACH</div>
+    <div class="ability-list" id="perk-list"></div>
+  </div>
+
   <div class="store-grid" id="store-grid"></div>
   <div class="store-foot" id="store-foot">LOOKS ONLY &middot; NO EFFECT ON GAMEPLAY</div>
 </div>
@@ -90,9 +104,11 @@
 <script src="js/cosmetics.js"></script>
 <script src="js/abilities.js"></script>
 <script src="js/pets.js"></script>
+<script src="js/perks.js"></script>
 <script src="js/store.js"></script>
 <script src="js/store-abilities.js"></script>
 <script src="js/store-pets.js"></script>
+<script src="js/store-perks.js"></script>
   <script src="js/click-sounds.js"></script>
 </body>
 </html>

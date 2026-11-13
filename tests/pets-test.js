@@ -43,7 +43,7 @@ const hitFor = (i, hp, dmg) => { E("npcs[" + i + "].hp = " + hp + "; hitNPC(npcs
   setProf({ gems: 50 });
   await go('store.html');
   let d = f.contentDocument, W = f.contentWindow;
-  ok(d.querySelectorAll('.tab').length === 6 && [...d.querySelectorAll('.tab')].some(t => t.dataset.cat === 'pet' && t.classList.contains('active')), 'gem shop has a PETS tab (6 tabs)');
+  ok(d.querySelectorAll('.tab').length === 7 && [...d.querySelectorAll('.tab')].some(t => t.dataset.cat === 'pet' && t.classList.contains('active')), 'gem shop has a PETS tab (7 tabs)');
   ok(!d.getElementById('pet-panel').hidden && d.getElementById('ability-panel').hidden && d.getElementById('store-grid').hidden, 'pets tab shows the pet wheel');
   ok(d.getElementById('pet-roll-btn').disabled && /100 GEMS/.test(d.getElementById('pet-roll-btn').textContent), 'a pet spin costs 100 gems; disabled without enough');
   ok(d.querySelectorAll('.pet-card').length === 9 && d.querySelectorAll('.pet-card.locked').length === 9, 'all 9 pets listed, all locked at first');

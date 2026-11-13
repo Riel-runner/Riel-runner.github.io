@@ -165,9 +165,10 @@ const GUN_REACH      = (window.RielCosmetics.equipped('class').reach) || 520;   
 const SHOOT_COOLDOWN = 18;           // frames (~0.3s at 60fps)
 const BULLET_SPEED   = 10;
 const PIXEL          = 3;            // sprite pixel scale
-const DASH_DISTANCE  = 400;          // px — half screen dash
-const DASH_COOLDOWN  = 600;          // frames — 10 seconds at 60fps
-const DASH_DURATION  = 10;           // frames the dash lasts
+// Dash, with the gem upgrades (js/perks.js, every campaign): cooldown, distance, speed
+const DASH_DISTANCE  = Math.round(400 * window.RielPerks.value('dashDist'));        // px: half a screen, more with upgrades
+const DASH_COOLDOWN  = Math.round(600 * window.RielPerks.value('dashCd'));          // frames: 10s, down to 5s
+const DASH_DURATION  = Math.max(4, Math.round(10 / window.RielPerks.value('dashSpeed'))); // frames the dash takes (fewer = faster)
 const GAME_VERSION   = 'V8';
 
 // ═══════════════════════════════════════════════════════════════
@@ -780,9 +781,9 @@ function playReloadSound(finished) {
 
 // Powerups: jump double-height and speed boost
 const powerups = []; // each: {x,y,w,h,type:'jump'|'speed',collected:false}
-const JUMP_POWER_MULT = 1.5;   // jump boost: 1.5x jump HEIGHT (was 2x force = 4x height)
+const JUMP_POWER_MULT = window.RielPerks.value('jumpBoost');   // J power-up: 1.5x jump HEIGHT, up to 2x with the gem upgrade
 const JUMP_POWER_DURATION_FRAMES = 30 * 60; // 30s
-const SPEED_POWER_MULT = 2;    // speed boost: 2x move speed (was 3x)
+const SPEED_POWER_MULT = window.RielPerks.value('speedBoost'); // S power-up: 2x move speed, up to 2.75x with the gem upgrade
 const SPEED_POWER_DURATION_FRAMES = 15 * 60; // 15s
 
 // Player power timers
@@ -1780,11 +1781,11 @@ function updatePowerups() {
       if (p.type === 'jump') {
         player.jumpMult = JUMP_POWER_MULT;
         player.jumpPowerTimer = JUMP_POWER_DURATION_FRAMES;
-        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'JUMP x' + JUMP_POWER_MULT, color: '#8e44ad', life: 60, vy: -1.2, isText: true });
+        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'JUMP x' + Math.round(JUMP_POWER_MULT * 10) / 10, color: '#8e44ad', life: 60, vy: -1.2, isText: true });
       } else {
         player.speedMult = SPEED_POWER_MULT;
         player.speedPowerTimer = SPEED_POWER_DURATION_FRAMES;
-        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'SPD x' + SPEED_POWER_MULT, color: '#27ae60', life: 60, vy: -1.2, isText: true });
+        dmgNumbers.push({ x: p.x, y: p.y - 8, amount: 'SPD x' + Math.round(SPEED_POWER_MULT * 100) / 100, color: '#27ae60', life: 60, vy: -1.2, isText: true });
       }
       if (typeof playPickupSound === 'function') playPickupSound();   // (a bare reference threw: it isn't defined)
     }

@@ -42,7 +42,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   localStorage.removeItem('rielrunner_profile');
   await go('store.html');
   d = f.contentDocument;
-  ok(d.querySelectorAll('.tab').length === 6 && d.querySelectorAll('.store-card').length === 6, '6 tabs (classes / weapon / player / trail / abilities / pets), 6 classes');
+  ok(d.querySelectorAll('.tab').length === 7 && d.querySelectorAll('.store-card').length === 6, '7 tabs (weapon / player / trail on top; classes / abilities / pets / upgrades below), 6 classes');
   ok(d.getElementById('gem-count').textContent === '0' && /EQUIPPED/.test(d.querySelector('.store-card').textContent), 'new profile: 0 gems, free GUNNER class equipped');
   ok([...d.querySelectorAll('.store-btn.is-buy')].every(b => b.disabled), 'cannot buy (or spin) anything with 0 gems');
   ok(!/RIELS|LEVEL COMPLETE|AVAILABLE UPGRADES/.test(d.body.textContent), 'shows none of the upgrade-shop stuff');
@@ -112,10 +112,10 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   await go('store.html');
   ok(f.contentDocument.getElementById('gem-count').textContent === '0' && raw().gems === 0, 'gems edited in storage: caught, and as a penalty ALL gems are taken away (0)');
   await go('index.html');
-  ok(/CHEATING DETECTED.*ALL YOUR GEMS, ABILITIES, PETS AND CLASSES WERE TAKEN AWAY/.test((f.contentDocument.querySelector('.tamper-note') || {}).textContent || ''), 'title screen says cheating was detected and gems, abilities and classes were taken');
+  ok(/CHEATING DETECTED.*ALL YOUR GEMS, ABILITIES, PETS, UPGRADES AND CLASSES WERE TAKEN AWAY/.test((f.contentDocument.querySelector('.tamper-note') || {}).textContent || ''), 'title screen says cheating was detected and gems, abilities and classes were taken');
   await go('index.html');
   ok(!f.contentDocument.querySelector('.tamper-note'), 'that notice only shows once');
-  setProfile({ gems: 100, owned: { class: ['gunner', 'smg', 'sniper'], weapon: ['standard', 'gold'] }, equipped: { class: 'smg', weapon: 'gold' }, abilities: { owned: { shield: { level: 1, copies: 0 }, leech: { level: 2, copies: 3 } }, equipped: 'leech', slot2: true, equipped2: 'shield' }, pets: { owned: { dragon: { level: 3, copies: 0 } }, equipped: 'dragon' } });   // a real save with bought classes, a skin, abilities and a pet
+  setProfile({ gems: 100, owned: { class: ['gunner', 'smg', 'sniper'], weapon: ['standard', 'gold'] }, equipped: { class: 'smg', weapon: 'gold' }, abilities: { owned: { shield: { level: 1, copies: 0 }, leech: { level: 2, copies: 3 } }, equipped: 'leech', slot2: true, equipped2: 'shield' }, pets: { owned: { dragon: { level: 3, copies: 0 } }, equipped: 'dragon' }, perks: { dashCd: 5, speedBoost: 2 } });   // a real save with bought classes, a skin, abilities, a pet and gem upgrades
   await go('store.html');
   edit('rielrunner_profile', p => { delete p._s; p.gems = 50000; });   // remove the signature too
   await go('store.html');
@@ -123,6 +123,7 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   ok(!f.contentWindow.RielCosmetics.owns('class', 'smg') && !f.contentWindow.RielCosmetics.owns('class', 'sniper') && f.contentWindow.RielCosmetics.owns('class', 'gunner') && f.contentWindow.RielCosmetics.equipped('class').id === 'gunner', 'cheat penalty: every bought class is deleted, only the free GUNNER is left (and equipped)');
   ok(!Object.keys((raw().abilities || {}).owned || {}).length && !f.contentWindow.RielAbilities.hasSlot2() && !f.contentWindow.RielAbilities.equippedInfo(1), 'cheat penalty: every ability and the 2nd ability slot are deleted');
   ok(!Object.keys((raw().pets || {}).owned || {}).length && !raw().pets, 'cheat penalty: every pet is deleted');
+  ok(!raw().perks || !Object.values(raw().perks).some(Boolean), 'cheat penalty: the gem upgrades are taken away');
   ok(f.contentWindow.RielCosmetics.owns('weapon', 'gold'), 'cheat penalty: skins are kept');
   edit('rielrunner_profile', p => { p.gems = 77777; });
   edit('rielrunner_profile_b', p => { p.gems = 77777; });      // edit the backup as well

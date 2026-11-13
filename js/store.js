@@ -4,7 +4,7 @@ const C = window.RielCosmetics;
 const TAB_KEY = 'rielrunner_store_tab';
 
 let tab = 'class';
-try { const t = localStorage.getItem(TAB_KEY); if (C.CATEGORIES.includes(t) || t === 'ability' || t === 'pet') tab = t; } catch {}
+try { const t = localStorage.getItem(TAB_KEY); if (C.CATEGORIES.includes(t) || t === 'ability' || t === 'pet' || t === 'perk') tab = t; } catch {}
 
 const grid = document.getElementById('store-grid');
 C.pinGems(document.getElementById('gem-count'));
@@ -29,15 +29,18 @@ function render() {
     ? 'CLASSES CHANGE YOUR WEAPON &middot; UPGRADES SCALE WITH IT'
     : tab === 'ability' ? 'ABILITIES CAN ONLY BE WON ON THE WHEEL'
     : tab === 'pet' ? 'PETS CAN ONLY BE WON ON THE PET WHEEL'
+    : tab === 'perk' ? 'GEM UPGRADES WORK IN EVERY CAMPAIGN'
     : 'LOOKS ONLY &middot; NO EFFECT ON GAMEPLAY';
   grid.innerHTML = '';
   previews = [];
   // Abilities tab: wheel + collection (js/store-abilities.js) instead of the item grid.
   document.getElementById('ability-panel').hidden = tab !== 'ability';
   document.getElementById('pet-panel').hidden = tab !== 'pet';
-  grid.hidden = tab === 'ability' || tab === 'pet';
+  document.getElementById('perk-panel').hidden = tab !== 'perk';
+  grid.hidden = tab === 'ability' || tab === 'pet' || tab === 'perk';
   if (tab === 'ability') { if (window.StoreAbilities) window.StoreAbilities.render(); return; }
   if (tab === 'pet') { if (window.StorePets) window.StorePets.render(); return; }
+  if (tab === 'perk') { if (window.StorePerks) window.StorePerks.render(); return; }
   for (const it of C.CATALOG[tab]) {
     const owned = profile.owned[tab].includes(it.id);
     const equipped = profile.equipped[tab] === it.id;

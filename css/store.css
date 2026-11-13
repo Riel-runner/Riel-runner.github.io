@@ -355,3 +355,16 @@ body::after {
 
 /* Pets tab (js/store-pets.js): same wheel and cards as abilities */
 .pet-kind { font-size: 7px; color: #888870; }
+
+/* Category tabs in two rows: looks (cosmetic) on top, gameplay below */
+.tab-rows { width: 100%; margin-bottom: 16px; }
+.tab-rows .tabs { margin-bottom: 0; }
+.tab-row-label { font-size: 6px; color: #555566; letter-spacing: 0.12em; margin: 0 0 6px; }
+.tab-row-label:not(:first-child) { margin-top: 12px; }
+.tabs.tabs-looks { grid-template-columns: repeat(3, 1fr); }
+.tabs.tabs-play  { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 480px) { .tabs.tabs-play { grid-template-columns: repeat(2, 1fr); } }
+
+/* Gem upgrades (js/store-perks.js): 5 tier pips */
+.perk-pips { display: flex; gap: 4px; }
+.perk-pips i { flex: 1; height: 6px; background: #1e2440; }

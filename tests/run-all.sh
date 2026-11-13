@@ -9,7 +9,7 @@ C="${CHROME:-C:/Program Files/Google/Chrome/Application/chrome.exe}"
 cd "$REPO" || exit 1
 
 status=0
-for t in intro death touch lives shop store classes modes revive ai soak jump save laser kinds achievements abilities pets hazards layout; do
+for t in intro death touch lives shop store classes modes revive ai soak jump save laser kinds achievements abilities pets perks hazards layout; do
   out="$(node "$T/$t-test.js" . "$C")"
   pass=$(grep -c '^PASS' <<<"$out"); fail=$(grep -c -E '^FAIL|ERROR|no result' <<<"$out")
   printf '%-6s %3d pass %3d fail\n' "$t" "$pass" "$fail"

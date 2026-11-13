@@ -244,7 +244,7 @@ if(bestRiels) document.getElementById('best-riels').textContent = bestRiels + ' 
   const note = document.createElement('div');
   note.className = 'tamper-note';
   note.textContent = t === 'wipe' ? "SHOP RESET: EVERYONE'S CLASSES, SKINS AND TRAILS WERE CLEARED. YOUR GEMS AND ABILITIES ARE SAFE."
-                   : t === 'penalty' ? 'CHEATING DETECTED: SAVE DATA WAS EDITED OUTSIDE THE GAME. ALL YOUR GEMS, ABILITIES, PETS AND CLASSES WERE TAKEN AWAY.'
+                   : t === 'penalty' ? 'CHEATING DETECTED: SAVE DATA WAS EDITED OUTSIDE THE GAME. ALL YOUR GEMS, ABILITIES, PETS, UPGRADES AND CLASSES WERE TAKEN AWAY.'
                                      : 'CHEATING DETECTED: SAVE DATA WAS EDITED OUTSIDE THE GAME, SO IT WAS RESET.';
   document.querySelector('.stat-row').after(note);
 })();
