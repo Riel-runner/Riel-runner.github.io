@@ -995,11 +995,22 @@ const ENEMY_KINDS = {
   runner:   { unlock: 11, hp: 0.6, speed: 0.97 / 0.9, reward: 3, name: 'RUNNER',   tip: 'FAST - LUNGES AT YOU WHEN IT FLASHES' },
   spitter:  { unlock: 21, hp: 0.8, speed: 0.85,       reward: 4, name: 'SPITTER',  tip: 'SHOOTS FROM RANGE - JUMP THE BLOBS' },
   bomber:   { unlock: 31, hp: 0.7, speed: 1.0,        reward: 3, name: 'BOMBER',   tip: 'EXPLODES UP CLOSE - SHOOT IT FIRST' },
-  shielder: { unlock: 41, hp: 2.0, speed: 0.6,        reward: 6, name: 'SHIELDER', tip: 'BLOCKS SHOTS FROM THE FRONT - GET BEHIND IT' },
+  shielder: { unlock: 41, hp: 1.5, speed: 0.6,        reward: 6, name: 'SHIELDER', tip: 'SHIELD BREAKS AFTER 8 HITS - OR GET BEHIND' },
   medic:    { unlock: 51, hp: 1.2, speed: 0.9,        reward: 5, name: 'MEDIC',    tip: 'HEALS NEARBY ENEMIES - TAKE IT OUT FIRST' },
 };
 
 // Pick a type for a regular enemy slot: specials get more common deeper into the campaign.
+// Shielder nerf (user: shield too OP): front shots do 25% chip damage, and 8 of them break
+// the shield for good. It also turns slowly (1s), a window to shoot it from behind.
+const SHIELD_HITS        = 8;
+const SHIELD_CHIP        = 0.25;
+const SHIELD_TURN_FRAMES = 60;
+function breakShield(n) {
+  n.shieldHp = 0;
+  for (let i = 0; i < 8; i++) rielParticles.push({ x: n.x + (n.facing > 0 ? n.w : 0), y: n.y + 4 + i * 2, vx: n.facing * (0.5 + Math.random() * 1.5), vy: -1 - Math.random() * 2, life: 24 });
+  dmgNumbers.push({ x: n.x - 10, y: n.y - 16, amount: 'SHIELD BROKEN', color: '#bdc3c7', life: 60, vy: -0.8, isText: true });
+}
+
 function pickEnemyKind(level) {
   if (MODE.allEnemies) level = Math.max(level, 95); // Nightmare: every type, at the late-game mix
   const unlocked = Object.keys(ENEMY_KINDS).filter(k => level >= ENEMY_KINDS[k].unlock);
@@ -1052,6 +1063,7 @@ function makeNPC(wx, isBoss = false, customHp = null, customDmg = null, isTank =
     facing: -1,
     abilityTimer: 60 + Math.floor(Math.random() * 60),
     lungeTimer: 0, lungeDir: 0, fuse: 0, turnTimer: 0, healPulse: 0, shieldFlash: 0,
+    shieldHp: kind === 'shielder' ? SHIELD_HITS : 0,   // shielder: front hits its shield takes before breaking
     // AI (see ENEMY AI section)
     vx: 0,
     aware: false,        // has noticed the player
@@ -1226,16 +1238,18 @@ function updateNPCs() {
         b.y > n.y && b.y < n.y + n.h;
       if (hit) {
         if (b.pierce && b.hits.includes(n)) continue;              // already went through this one
-        const shielded = n.kind === 'shielder' && Math.sign(b.dx) === -n.facing;
+        const shielded = n.kind === 'shielder' && n.shieldHp > 0 && Math.sign(b.dx) === -n.facing;
         if (b.pierce && !shielded) b.hits.push(n); else bullets.splice(bi, 1);
-        if (shielded) { // flew into the shield's face
+        const dmg = classDamage() * (levelEvent.playerDmgMult || 1) * (b.sharp ? PET_SHARP_MULT : 1); // class weapon x level event (x3: HOOT)
+        addStat('shotsHit');
+        if (shielded) { // flew into the shield's face: only chip damage, and the shield wears down
           n.shieldFlash = 6;
           rielParticles.push({ x: b.x, y: b.y, vx: -Math.sign(b.dx) * 1.2, vy: -1, life: 14 });
-          alertNPC(n, true);
+          if (--n.shieldHp <= 0) breakShield(n);
+          hitNPC(n, dmg * SHIELD_CHIP, '#bdc3c7');
           break;
         }
-        addStat('shotsHit');
-        hitNPC(n, classDamage() * (levelEvent.playerDmgMult || 1) * (b.sharp ? PET_SHARP_MULT : 1), b.sharp ? '#ff8a1a' : undefined); // class weapon x level event (x3: HOOT)
+        hitNPC(n, dmg, b.sharp ? '#ff8a1a' : undefined);
         break;
       }
     }
@@ -1606,7 +1620,7 @@ function enemyAbility(n) {
 
     case 'shielder': { // turns slowly to keep the shield toward the player
       const want = Math.sign(px - cx) || 1;
-      if (want !== n.facing) { if (++n.turnTimer > 40) { n.facing = want; n.turnTimer = 0; } }
+      if (want !== n.facing) { if (++n.turnTimer > SHIELD_TURN_FRAMES) { n.facing = want; n.turnTimer = 0; } }
       else n.turnTimer = 0;
       return false;
     }
@@ -2243,12 +2257,16 @@ function drawEnemyExtras(n, sx, by, facingRight) {
     case 'spitter':  // glow in front of the mouth before it spits
       if (n.windup > 0) { ctx.fillStyle = 'rgba(46,204,113,0.35)'; ctx.fillRect(sx + (facingRight ? n.w : -6), by + 8, 6, 8); }
       break;
-    case 'shielder': { // shield on the side it faces
+    case 'shielder': { // shield on the side it faces (gone once broken), cracking as it wears down
+      if (n.shieldHp <= 0) break;
       const shx = n.facing > 0 ? sx + n.w : sx - 5;
       ctx.fillStyle = n.shieldFlash > 0 ? '#ffffff' : '#bdc3c7';
       ctx.fillRect(shx, by + 1, 5, n.h - 4);
-      ctx.fillStyle = '#5dade2';
+      ctx.fillStyle = n.shieldHp <= SHIELD_HITS / 4 ? '#c0392b' : '#5dade2';
       ctx.fillRect(shx + 1, by + 4, 3, n.h - 10);
+      ctx.fillStyle = '#2a2e44';                                   // cracks
+      if (n.shieldHp <= SHIELD_HITS * 0.75) ctx.fillRect(shx + 1, by + 7, 2, 1);
+      if (n.shieldHp <= SHIELD_HITS / 2) { ctx.fillRect(shx + 2, by + 11, 2, 1); ctx.fillRect(shx + 1, by + 14, 1, 2); }
       break;
     }
     case 'medic':    // green ring when it heals

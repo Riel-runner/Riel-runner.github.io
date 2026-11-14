@@ -91,10 +91,19 @@ const active = () => JSON.parse(localStorage.getItem('activeCampaign'));
   const frontHp = E(w, 'npcs[0].hp');
   E(w, 'bullets.push({ x: npcs[0].x + npcs[0].w - 3, y: npcs[0].y + 10, dx: -1, dy: 0, alive: true });');
   step(w, 2);
-  ok(frontHp === E(w, '__h0') && E(w, 'npcs[0].hp') < frontHp, 'shielder blocks shots from the front, takes damage from behind');
+  const frontDmg = E(w, '__h0') - frontHp, backDmg = frontHp - E(w, 'npcs[0].hp');
+  ok(frontDmg > 0 && Math.abs(frontDmg - backDmg * 0.25) < 1e-6 && E(w, 'npcs[0].shieldHp') === 7, 'shielder: front shots only do 25% chip damage (' + Math.round(frontDmg * 10) / 10 + ' vs ' + Math.round(backDmg * 10) / 10 + ' from behind) and wear the shield down');
+  E(w, 'npcs[0].hp = npcs[0].maxHp = 1e6; window.__h1 = npcs[0].hp; for (let k = 0; k < 7; k++) bullets.push({ x: npcs[0].x + 3, y: npcs[0].y + 10, dx: 1, dy: 0, alive: true });');
+  for (let k = 0; k < 7; k++) step(w, 1);
+  ok(E(w, 'npcs[0].shieldHp') === 0, 'the shield breaks after 8 hits');
+  E(w, 'window.__h2 = npcs[0].hp; bullets.push({ x: npcs[0].x + 3, y: npcs[0].y + 10, dx: 1, dy: 0, alive: true });');
+  step(w, 2);
+  ok(Math.abs((E(w, '__h2') - E(w, 'npcs[0].hp')) - backDmg) < 1e-6, 'with the shield broken, front shots do full damage');
+  ok(E(w, "ENEMY_KINDS.shielder.hp") === 1.5, 'shielders have 1.5x HP (was 2x)');
   E(w, 'player.x = npcs[0].x + 200;'); step(w, 20);
-  const stillOld = E(w, 'npcs[0].facing') === -1; step(w, 30);
-  ok(stillOld && E(w, 'npcs[0].facing') === 1, 'shielder turns slowly (a window to hit it from behind)');
+  const stillOld = E(w, 'npcs[0].facing') === -1; step(w, 25);
+  const stillOld2 = E(w, 'npcs[0].facing') === -1; step(w, 25);
+  ok(stillOld && stillOld2 && E(w, 'npcs[0].facing') === 1, 'shielder turns slowly, about 1s (a window to hit it from behind)');
 
   // Medic: heals hurt allies nearby, flees when the player gets close
   w = await setup(55);
